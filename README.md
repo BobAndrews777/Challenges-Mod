@@ -14,7 +14,7 @@ Stack-Limit, Platzier-Reihenfolge) muss die Mod **auch bei allen Spielern** inst
 | Schaden | Schaden bei jedem Sprung (einstellbar), Tod beim Schleichen |
 | Force | Force Block, Force Mob, Force Item – mit einstellbarem Zeitlimit |
 | Welt | `/challenge reset` löscht die Welt und erstellt beim nächsten Start eine neue |
-| Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: Level, Herzen, Hunger, Mob Damage, Item-Loot, Betten, Platzieren, Atemluft, Waffen, Netherportale, Chunks, Stacks, Werkzeuge, Enderperlen |
+| Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: Craften, Level, Inventar, Herzen, Hunger, Hotbar, Mob Damage, Rüstung, Item-Loot, Betten, Platzieren, Main Hand, Atemluft, Waffen, Netherportale, Chunks, Stacks, Werkzeuge, Enderperlen |
 
 ## Befehle (OP nötig)
 

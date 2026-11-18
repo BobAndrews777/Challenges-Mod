@@ -13,16 +13,18 @@ import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
 import de.bob.challenges.ChallengeManager;
@@ -38,6 +40,8 @@ public final class PortalSplit {
 	private final SplitManager split;
 	private final List<Pending> pending = new ArrayList<>();
 	private final Map<UUID, double[]> lastSafe = new HashMap<>();
+	/** Rahmenblöcke, die den Spielern gerade farbig vorgegaukelt werden */
+	private Set<BlockPos> shownFrames = new HashSet<>();
 	private long tick = 0;
 
 	PortalSplit(SplitManager split) {
@@ -68,12 +72,16 @@ public final class PortalSplit {
 		if (!split.isActive(SplitType.PORTALS)) {
 			pending.clear();
 			lastSafe.clear();
+			if (!shownFrames.isEmpty()) {
+				restoreFrames(server.overworld(), shownFrames);
+				shownFrames = new HashSet<>();
+			}
 			return;
 		}
 		ServerLevel overworld = server.overworld();
 		processPending(server, overworld);
 		blockStrangers(overworld);
-		if (tick % 20 == 0) {
+		if (tick % 40 == 0) {
 			showFrames(server, overworld);
 		}
 	}
@@ -159,14 +167,29 @@ public final class PortalSplit {
 		}
 	}
 
-	/** Farbige Partikel zeigen, wem ein Portal gehört. */
+	private static boolean isObsidian(ServerLevel level, BlockPos pos) {
+		return "obsidian".equals(BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).getPath());
+	}
+
+	private static BlockState colorBlock(SplitColor color) {
+		String id = switch (color) {
+			case RED -> "red_concrete";
+			case YELLOW -> "yellow_concrete";
+			case BLUE -> "blue_concrete";
+			case GREEN -> "lime_concrete";
+		};
+		Identifier key = Identifier.withDefaultNamespace(id);
+		return BuiltInRegistries.BLOCK.containsKey(key) ? BuiltInRegistries.BLOCK.getValue(key).defaultBlockState() : null;
+	}
+
+	/**
+	 * Der Obsidian-Rahmen eines Portals wird bei den Spielern in der Farbe des Besitzers angezeigt.
+	 * Auf dem Server bleibt es echter Obsidian – das Portal funktioniert ganz normal.
+	 */
 	private void showFrames(MinecraftServer server, ServerLevel level) {
 		List<String> remove = new ArrayList<>();
-		int shown = 0;
+		Map<BlockPos, BlockState> frames = new HashMap<>();
 		for (Map.Entry<String, String> entry : split.settings().portalOwners.entrySet()) {
-			if (shown > 1500) {
-				break;
-			}
 			BlockPos pos;
 			try {
 				pos = BlockPos.of(Long.parseLong(entry.getKey()));
@@ -182,15 +205,40 @@ public final class PortalSplit {
 				continue;
 			}
 			SplitColor color = split.colorOfUuid(entry.getValue());
-			if (color == null) {
+			BlockState state = color == null ? null : colorBlock(color);
+			if (state == null) {
 				continue;
 			}
-			level.sendParticles(new DustParticleOptions(color.argb, 1.4f), pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
-					2, 0.3, 0.4, 0.3, 0.0);
-			shown++;
+			for (BlockPos neighbor : BlockPos.betweenClosed(pos.offset(-1, -1, -1), pos.offset(1, 1, 1))) {
+				if (!frames.containsKey(neighbor) && isObsidian(level, neighbor)) {
+					frames.put(neighbor.immutable(), state);
+				}
+			}
 		}
 		for (String key : remove) {
 			split.settings().portalOwners.remove(key);
+		}
+
+		for (ServerPlayer player : level.players()) {
+			for (Map.Entry<BlockPos, BlockState> frame : frames.entrySet()) {
+				if (player.blockPosition().distSqr(frame.getKey()) < 96 * 96) {
+					player.connection.send(new ClientboundBlockUpdatePacket(frame.getKey(), frame.getValue()));
+				}
+			}
+		}
+
+		// Rahmen, die nicht mehr zu einem Portal gehören, wieder echt anzeigen
+		Set<BlockPos> stale = new HashSet<>(shownFrames);
+		stale.removeAll(frames.keySet());
+		restoreFrames(level, stale);
+		shownFrames = new HashSet<>(frames.keySet());
+	}
+
+	private static void restoreFrames(ServerLevel level, Set<BlockPos> positions) {
+		for (ServerPlayer player : level.players()) {
+			for (BlockPos pos : positions) {
+				player.connection.send(new ClientboundBlockUpdatePacket(level, pos));
+			}
 		}
 	}
 }

@@ -6,7 +6,9 @@
 		"BlockItemMixin",
 		"ItemInstanceMixin",
 		"ItemStackMixin",
-		"ItemEntityMixin"
+		"ItemEntityMixin",
+		"AbstractContainerMenuMixin",
+		"ResultSlotMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

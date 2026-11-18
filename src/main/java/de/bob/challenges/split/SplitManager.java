@@ -29,6 +29,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Prediction;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -55,6 +56,10 @@ public final class SplitManager {
 	private final LootSplit loot = new LootSplit(this);
 	private final PortalSplit portals = new PortalSplit(this);
 	private final ChunkSplit chunks = new ChunkSplit(this);
+	private final SharedSlots sharedSlots = new SharedSlots(this);
+	private final SharedCrafting crafting = new SharedCrafting(this, sharedSlots);
+	private final MainHandSplit mainHand = new MainHandSplit(this);
+	private List<Integer> lastSlotInfo = List.of();
 
 	private SplitManager() {
 	}
@@ -69,6 +74,38 @@ public final class SplitManager {
 
 	public PortalSplit portals() {
 		return portals;
+	}
+
+	public SharedCrafting crafting() {
+		return crafting;
+	}
+
+	/**
+	 * Spiegel-Items und fremde Hotbar-Plätze (Main Hand) haben keine Wirkung:
+	 * Benutzen, Schlagen, Abbauen und Platzieren werden verhindert.
+	 */
+	public InteractionResult checkHandUse(Player player) {
+		if (!(player instanceof ServerPlayer serverPlayer) || !s().splitMode) {
+			return InteractionResult.PASS;
+		}
+		if (Mirrors.isMarked(player.getMainHandItem())) {
+			serverPlayer.connection.send(new ClientboundSetActionBarTextPacket(
+					Component.literal("Das gehört dir nicht – nimm etwas aus deinem eigenen Bereich!").withStyle(ChatFormatting.RED)));
+			return InteractionResult.FAIL;
+		}
+		if (!mainHand.holdsHand(player)) {
+			mainHand.notifyBlocked(serverPlayer);
+			return InteractionResult.FAIL;
+		}
+		return InteractionResult.PASS;
+	}
+
+	/** Für das BlockItem-Mixin: darf mit diesem Item platziert werden? */
+	public boolean canPlaceWith(Player player, ItemStack stack) {
+		if (Mirrors.isMarked(stack)) {
+			return false;
+		}
+		return !(player instanceof ServerPlayer) || mainHand.holdsHand(player);
 	}
 
 	ChallengeSettings settings() {
@@ -92,6 +129,27 @@ public final class SplitManager {
 	public void alwaysTick(MinecraftServer server) {
 		alwaysCounter++;
 		stats.alwaysTick(server, alwaysCounter);
+		sharedSlots.tick(server);
+		crafting.tick(server);
+		mainHand.tick(server);
+		if (alwaysCounter % 10 == 0) {
+			sendSlotInfo(server);
+		}
+	}
+
+	private void sendSlotInfo(MinecraftServer server) {
+		List<Integer> info = new ArrayList<>(SlotInfoPayload.toList(crafting.ownerColors()));
+		info.addAll(SlotInfoPayload.toList(mainHand.holderColors()));
+		if (info.equals(lastSlotInfo)) {
+			return;
+		}
+		lastSlotInfo = info;
+		SlotInfoPayload payload = new SlotInfoPayload(info.subList(0, 13), info.subList(13, 22));
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (ServerPlayNetworking.canSend(player, SlotInfoPayload.TYPE)) {
+				ServerPlayNetworking.send(player, payload);
+			}
+		}
 	}
 
 	public static SplitManager get() {
@@ -143,6 +201,8 @@ public final class SplitManager {
 		s.portalOwners.clear();
 		stats.reset();
 		mobDamage.reset();
+		sharedSlots.reset();
+		crafting.reset();
 		countdownTicks = -1;
 		pending = null;
 		pendingJoker = false;
@@ -624,6 +684,13 @@ public final class SplitManager {
 		}
 		for (ItemStack extra : overflow) {
 			player.getInventory().placeItemBackInInventory(extra, Prediction.SERVER_ONLY);
+		}
+	}
+
+	/** Fallen gelassene Spiegel-Items (z. B. per Q oder beim Tod) verschwinden sofort. */
+	public void onEntityLoad(Entity entity) {
+		if (entity instanceof ItemEntity item && Mirrors.isMarked(item.getItem())) {
+			item.discard();
 		}
 	}
 

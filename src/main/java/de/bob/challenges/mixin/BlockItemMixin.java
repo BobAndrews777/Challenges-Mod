@@ -21,6 +21,10 @@ public class BlockItemMixin {
 			at = @At("HEAD"), cancellable = true)
 	private void challenges$checkPlaceTurn(BlockPlaceContext context, CallbackInfoReturnable<InteractionResult> cir) {
 		Player player = context.getPlayer();
+		if (player != null && !SplitManager.get().canPlaceWith(player, context.getItemInHand())) {
+			cir.setReturnValue(InteractionResult.FAIL);
+			return;
+		}
 		if (player != null && !SplitFlags.canPlace(player.getName().getString())) {
 			if (player instanceof ServerPlayer serverPlayer) {
 				SplitManager.get().notifyNotYourTurn(serverPlayer);

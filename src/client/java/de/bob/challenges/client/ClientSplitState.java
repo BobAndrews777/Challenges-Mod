@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import de.bob.challenges.split.SplitFlags;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
 
@@ -16,6 +17,8 @@ public final class ClientSplitState {
 	public static volatile String placeTurn = "";
 	public static volatile SplitStatsPayload stats = new SplitStatsPayload(0, 0, List.of());
 	public static final Map<Integer, MobDamagePayload> mobDamage = new ConcurrentHashMap<>();
+	public static volatile List<Integer> craftOwners = List.of();
+	public static volatile List<Integer> handHolders = List.of();
 
 	private ClientSplitState() {
 	}
@@ -39,9 +42,16 @@ public final class ClientSplitState {
 		} else {
 			if (mobDamage.size() > 500) {
 				mobDamage.clear();
+		craftOwners = List.of();
+		handHolders = List.of();
 			}
 			mobDamage.put(payload.entityId(), payload);
 		}
+	}
+
+	public static void updateSlotInfo(SlotInfoPayload payload) {
+		craftOwners = List.copyOf(payload.craftOwners());
+		handHolders = List.copyOf(payload.handHolders());
 	}
 
 	public static boolean has(int flag) {

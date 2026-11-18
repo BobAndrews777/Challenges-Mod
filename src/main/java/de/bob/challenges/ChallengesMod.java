@@ -25,6 +25,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitManager;
 import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
@@ -93,6 +94,14 @@ public final class ChallengesMod implements ModInitializer {
 		});
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.loot().onEntityLoad(entity));
 		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.portals().onUseBlock(player, level, hitResult));
+
+		// Split-Challenge Etappe 3: geteilte Slots
+		PayloadTypeRegistry.clientboundPlay().register(SlotInfoPayload.TYPE, SlotInfoPayload.CODEC);
+		AttackEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> split.checkHandUse(player));
+		UseItemCallback.EVENT.register((player, level, hand) -> split.checkHandUse(player));
+		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> split.checkHandUse(player));
+		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.checkHandUse(player));
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.onEntityLoad(entity));
 
 		LOGGER.info("Challenges-Mod geladen{}", worldWasReset ? " (neue Welt)" : "");
 	}

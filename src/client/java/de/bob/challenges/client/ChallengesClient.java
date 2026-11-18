@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 
 import de.bob.challenges.ChallengesMod;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
 
@@ -23,5 +24,10 @@ public final class ChallengesClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(MobDamagePayload.TYPE, (payload, context) -> ClientSplitState.updateMobDamage(payload));
 		SplitBarsHud.register();
 		HudElementRegistry.addLast(ChallengesMod.id("mob_damage"), MobDamageHud::extract);
+
+		// Etappe 3: geteilte Slots
+		ClientPlayNetworking.registerGlobalReceiver(SlotInfoPayload.TYPE, (payload, context) -> ClientSplitState.updateSlotInfo(payload));
+		SlotColorsScreen.register();
+		HudElementRegistry.addLast(ChallengesMod.id("main_hand"), MainHandHud::extract);
 	}
 }
