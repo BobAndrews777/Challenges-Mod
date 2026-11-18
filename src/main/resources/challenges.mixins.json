@@ -1,0 +1,16 @@
+{
+	"required": true,
+	"package": "de.bob.challenges.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"BlockItemMixin",
+		"ItemInstanceMixin",
+		"ItemStackMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

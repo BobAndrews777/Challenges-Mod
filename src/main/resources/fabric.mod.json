@@ -3,14 +3,18 @@
 	"id": "challenges",
 	"version": "${version}",
 	"name": "Challenges",
-	"description": "Challenges für private Server: Timer, Zufalls-Drops, Schaden-Challenges, Force-Challenges und mehr. Nur auf dem Server nötig.",
+	"description": "Challenges für private Server: Timer, Zufalls-Drops, Schaden-, Force- und Split-Challenges. Muss auf dem Server und bei allen Spielern installiert sein.",
 	"authors": ["Bob"],
 	"license": "CC0-1.0",
 	"icon": "assets/challenges/icon.png",
 	"environment": "*",
 	"entrypoints": {
-		"main": ["de.bob.challenges.ChallengesMod"]
+		"main": ["de.bob.challenges.ChallengesMod"],
+		"client": ["de.bob.challenges.client.ChallengesClient"]
 	},
+	"mixins": [
+		"challenges.mixins.json"
+	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~26.3",

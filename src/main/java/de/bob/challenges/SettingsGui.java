@@ -19,6 +19,8 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
+import de.bob.challenges.split.SplitManager;
+
 /**
  * Einstellungs-Menü als Truhen-GUI. Funktioniert mit normalen Clients, ohne Client-Mod.
  */
@@ -115,6 +117,18 @@ public final class SettingsGui {
 				List.of("So viel Zeit habt ihr", "für jede Force-Aufgabe."),
 				() -> s().forceMinutes, v -> s().forceMinutes = v, 1, " Minute(n)");
 
+		toggle(43, "shears", "Split-Challenge",
+				List.of("Nach und nach wird alles", "zwischen euch aufgeteilt.", "Stirbt einer, sterben alle."),
+				() -> s().splitMode, v -> {
+					s().splitMode = v;
+					if (v && manager().isRunning()) {
+						SplitManager.get().onTimerStart(server());
+					} else {
+						SplitManager.get().sync(server());
+					}
+				});
+		renderSplitWindow(44);
+
 		gui.setSlot(45, new GuiElementBuilder(Items.BARRIER)
 				.setName(Component.literal("Schließen").withStyle(ChatFormatting.RED))
 				.setCallback((index, type, action, g) -> gui.close())
@@ -175,6 +189,39 @@ public final class SettingsGui {
 						manager().start(server());
 					}
 					render();
+				})
+				.build());
+	}
+
+	private void renderSplitWindow(int slot) {
+		List<Component> lore = new ArrayList<>();
+		lore.add(gray("Nach so vielen Minuten kommt"));
+		lore.add(gray("der nächste Split (zufällig)."));
+		lore.add(Component.empty());
+		lore.add(Component.literal("Frühestens: " + s().splitMinMinutes + " Min").withStyle(ChatFormatting.AQUA));
+		lore.add(Component.literal("Spätestens: " + s().splitMaxMinutes + " Min").withStyle(ChatFormatting.AQUA));
+		lore.add(Component.literal("Joker pro Run: " + s().splitJokers).withStyle(ChatFormatting.AQUA));
+		lore.add(Component.empty());
+		lore.add(Component.literal("Linksklick: frühestens +1").withStyle(ChatFormatting.YELLOW));
+		lore.add(Component.literal("Rechtsklick: frühestens −1").withStyle(ChatFormatting.YELLOW));
+		lore.add(Component.literal("Shift-Links: spätestens +1").withStyle(ChatFormatting.YELLOW));
+		lore.add(Component.literal("Shift-Rechts: spätestens −1").withStyle(ChatFormatting.YELLOW));
+		lore.add(gray("Joker: /split joker <anzahl>"));
+
+		gui.setSlot(slot, new GuiElementBuilder(item("clock"))
+				.setName(Component.literal("Split-Zeitfenster").withStyle(ChatFormatting.AQUA))
+				.setLore(lore)
+				.hideDefaultTooltip()
+				.setCallback((index, type, action, g) -> {
+					int delta = type.isRight ? -1 : 1;
+					if (type.shift) {
+						s().splitMaxMinutes = Math.max(s().splitMinMinutes, s().splitMaxMinutes + delta);
+					} else {
+						s().splitMinMinutes = Math.max(1, s().splitMinMinutes + delta);
+						s().splitMaxMinutes = Math.max(s().splitMinMinutes, s().splitMaxMinutes);
+					}
+					s().clampValues();
+					changed("Split-Zeitfenster: " + s().splitMinMinutes + "–" + s().splitMaxMinutes + " Minuten");
 				})
 				.build());
 	}

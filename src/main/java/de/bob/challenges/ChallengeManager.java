@@ -10,6 +10,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
+import de.bob.challenges.split.SplitManager;
+
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -25,6 +27,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.util.Prediction;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
@@ -92,6 +95,14 @@ public final class ChallengeManager {
 			settings.timerTicks = 0;
 			settings.ended = false;
 			settings.dropSeed = new Random().nextLong();
+			settings.playerColors.clear();
+			settings.activeSplits.clear();
+			settings.removedSplits.clear();
+			settings.weaponOwners.clear();
+			settings.toolOwners.clear();
+			settings.jokersLeft = settings.splitJokers;
+			settings.nextSplitAt = -1;
+			settings.placeTurn = 0;
 		}
 		settings.save();
 	}
@@ -112,6 +123,7 @@ public final class ChallengeManager {
 		rebuildDropMap();
 		force.resolveTargets();
 		applyUhcGameRule(server);
+		SplitManager.get().sync(server);
 		ChallengesMod.LOGGER.info("Challenges geladen: {} Items verfügbar", obtainableItems.size());
 	}
 
@@ -149,6 +161,7 @@ public final class ChallengeManager {
 		}
 		running = true;
 		broadcast(server, Component.literal("Der Timer läuft! Viel Glück!").withStyle(ChatFormatting.GREEN));
+		SplitManager.get().onTimerStart(server);
 		return true;
 	}
 
@@ -164,6 +177,7 @@ public final class ChallengeManager {
 		settings.timerTicks = 0;
 		settings.ended = false;
 		force.reset();
+		SplitManager.get().resetRun(server);
 		save();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (player.isSpectator()) {
@@ -184,6 +198,7 @@ public final class ChallengeManager {
 		running = false;
 		settings.ended = true;
 		force.reset();
+		SplitManager.get().resetRun(server);
 		save();
 		showTitle(server,
 				Component.literal("Challenge geschafft!").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
@@ -199,6 +214,7 @@ public final class ChallengeManager {
 		running = false;
 		settings.ended = true;
 		force.reset();
+		SplitManager.get().resetRun(server);
 		save();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			player.setGameMode(GameType.SPECTATOR);
@@ -222,6 +238,14 @@ public final class ChallengeManager {
 			return;
 		}
 		if (entity instanceof ServerPlayer player) {
+			if (settings.splitMode) {
+				// Split-Challenge: Stirbt einer, sterben alle
+				if (SplitManager.get().onPlayerDeath(server, player)) {
+					return;
+				}
+				fail(server, player.getName().getString() + " ist gestorben – und alle mit ihm");
+				return;
+			}
 			if (settings.deathEndsChallenge) {
 				fail(server, player.getName().getString() + " ist gestorben");
 			}
@@ -321,6 +345,7 @@ public final class ChallengeManager {
 			}
 
 			force.tick(server, this);
+			SplitManager.get().tick(server);
 		} else {
 			sharedHealth = Float.NaN;
 			lastJumps.clear();
@@ -328,13 +353,15 @@ public final class ChallengeManager {
 
 		if (tickCounter % 10 == 0) {
 			sendActionBar(server);
+			updateRandomItemBar(server);
+			force.updateBossBar(server, this);
 		}
 		if (tickCounter % (20 * 60) == 0) {
 			save();
 		}
 	}
 
-	private List<ServerPlayer> activePlayers(MinecraftServer server) {
+	public List<ServerPlayer> activePlayers(MinecraftServer server) {
 		List<ServerPlayer> result = new ArrayList<>();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (player.isAlive() && !player.isSpectator() && !player.isCreative()) {
@@ -419,10 +446,6 @@ public final class ChallengeManager {
 			text = Component.literal("Challenge beendet – " + formatTime(settings.timerTicks)).withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
 		} else if (running) {
 			text = Component.literal(formatTime(settings.timerTicks)).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
-			Component forceText = force.statusText();
-			if (forceText != null) {
-				text = text.append(Component.literal("  |  ").withStyle(ChatFormatting.DARK_GRAY)).append(forceText);
-			}
 		} else {
 			text = Component.literal("Timer pausiert").withStyle(ChatFormatting.RED, ChatFormatting.ITALIC);
 		}
@@ -430,6 +453,20 @@ public final class ChallengeManager {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			player.connection.send(packet);
 		}
+	}
+
+	/** Leiste oben: Countdown bis zum nächsten Zufalls-Item. */
+	private void updateRandomItemBar(MinecraftServer server) {
+		if (!settings.randomItem || !running || settings.ended) {
+			BossBars.hide(server, "random_item");
+			return;
+		}
+		int interval = settings.randomItemSeconds;
+		long intervalTicks = interval * 20L;
+		int secondsLeft = (int) Math.ceil((intervalTicks - (settings.timerTicks % intervalTicks)) / 20.0);
+		Component name = Component.literal("Nächstes Zufalls-Item in ").withStyle(ChatFormatting.AQUA)
+				.append(Component.literal(secondsLeft + "s").withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD));
+		BossBars.show(server, "random_item", name, secondsLeft, interval, BossEvent.BossBarColor.BLUE);
 	}
 
 	public void showTitle(MinecraftServer server, Component title, Component subtitle) {

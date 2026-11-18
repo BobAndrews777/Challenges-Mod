@@ -4,15 +4,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
+
+import de.bob.challenges.split.SplitManager;
+import de.bob.challenges.split.SplitSyncPayload;
 
 public final class ChallengesMod implements ModInitializer {
 	public static final String MOD_ID = "challenges";
@@ -40,6 +52,25 @@ public final class ChallengesMod implements ModInitializer {
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> manager.onPlayerReady(newPlayer));
 
 		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> manager.modifyDrops(holder, drops));
+
+		// Split-Challenge
+		SplitManager split = SplitManager.get();
+		PayloadTypeRegistry.clientboundPlay().register(SplitSyncPayload.TYPE, SplitSyncPayload.CODEC);
+		ServerPlayerEvents.JOIN.register(player -> {
+			if (player.level().getServer() != null) {
+				split.onJoin(player.level().getServer(), player);
+			}
+		});
+		AttackEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> split.checkWeaponUse(player));
+		UseItemCallback.EVENT.register((player, level, hand) -> split.checkWeaponUse(player));
+		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> split.checkToolUse(player));
+		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.checkToolUse(player));
+		EntitySleepEvents.SET_BED_OCCUPATION_STATE.register((entity, sleepingPos, bedState, occupied) -> split.skipBedOccupation(entity));
+		EntitySleepEvents.ALLOW_SLEEPING.register((player, sleepingPos) -> {
+			Component problem = split.checkSameBed(player, sleepingPos);
+			return problem == null ? null : new Player.BedSleepingProblem(problem);
+		});
+		ServerEntityEvents.ENTITY_UNLOAD.register(split::onEntityRemoved);
 
 		LOGGER.info("Challenges-Mod geladen{}", worldWasReset ? " (neue Welt)" : "");
 	}

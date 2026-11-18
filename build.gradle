@@ -6,6 +6,17 @@ base {
 	archivesName = "challenges"
 }
 
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"challenges" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
 repositories {
 	// sgui (Server-GUIs ohne Client-Mod) von Patbox
 	maven { url = 'https://maven.nucleoid.xyz' }

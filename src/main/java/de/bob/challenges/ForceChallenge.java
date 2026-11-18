@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.level.block.Block;
 
 /**
@@ -80,6 +81,8 @@ public final class ForceChallenge {
 	private Component targetName = null;
 	private long ticksLeft = 0;
 	private long waitTicks = -1;
+	private long waitTotal = 1;
+	private long taskTotal = 1;
 
 	/** Löst die Listen oben gegen die echten Registries auf. Unbekannte IDs werden übersprungen. */
 	public void resolveTargets() {
@@ -142,6 +145,7 @@ public final class ForceChallenge {
 			if (waitTicks < 0) {
 				// 2 bis 4 Minuten Pause zwischen den Aufgaben
 				waitTicks = (120 + manager.random().nextInt(121)) * 20L;
+				waitTotal = waitTicks;
 			}
 			waitTicks--;
 			if (waitTicks <= 0) {
@@ -186,6 +190,7 @@ public final class ForceChallenge {
 			}
 		}
 		ticksLeft = manager.settings().forceMinutes * 60L * 20L;
+		taskTotal = ticksLeft;
 		waitTicks = -1;
 
 		MutableComponent msg = Component.literal(type.title + ": ").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD)
@@ -237,15 +242,33 @@ public final class ForceChallenge {
 		waitTicks = -1;
 	}
 
-	/** Text für die Actionbar, oder null wenn gerade keine Aufgabe läuft. */
-	public Component statusText() {
-		if (activeType == null || targetName == null) {
-			return null;
+	/**
+	 * Aktualisiert die Leiste oben: aktuelle Aufgabe mit Restzeit,
+	 * oder Countdown bis zur nächsten Aufgabe.
+	 */
+	public void updateBossBar(MinecraftServer server, ChallengeManager manager) {
+		if (activeType != null && targetName != null && !manager.isEnded()) {
+			int seconds = (int) Math.max(0, ticksLeft / 20);
+			MutableComponent name = Component.literal(activeType.title + ": ").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD)
+					.append(targetName.copy().withStyle(ChatFormatting.AQUA))
+					.append(Component.literal("  " + clock(seconds)).withStyle(seconds < 30 ? ChatFormatting.RED : ChatFormatting.WHITE));
+			if (!manager.isRunning()) {
+				name = name.append(Component.literal(" (pausiert)").withStyle(ChatFormatting.GRAY));
+			}
+			BossBars.show(server, "force", name, seconds, (int) (taskTotal / 20),
+					seconds < 30 ? BossEvent.BossBarColor.RED : BossEvent.BossBarColor.PURPLE);
+			return;
 		}
-		long seconds = Math.max(0, ticksLeft / 20);
-		String time = String.format("%d:%02d", seconds / 60, seconds % 60);
-		return Component.literal(activeType.title + ": ").withStyle(ChatFormatting.LIGHT_PURPLE)
-				.append(targetName.copy().withStyle(ChatFormatting.AQUA))
-				.append(Component.literal(" (" + time + ")").withStyle(seconds < 30 ? ChatFormatting.RED : ChatFormatting.GRAY));
+		if (manager.isRunning() && waitTicks > 0 && !enabledTypes(manager.settings()).isEmpty()) {
+			int seconds = (int) (waitTicks / 20);
+			Component name = Component.literal("Nächste Force-Aufgabe in " + clock(seconds)).withStyle(ChatFormatting.GRAY);
+			BossBars.show(server, "force", name, seconds, (int) (waitTotal / 20), BossEvent.BossBarColor.WHITE);
+			return;
+		}
+		BossBars.hide(server, "force");
+	}
+
+	private static String clock(int seconds) {
+		return String.format("%d:%02d", seconds / 60, seconds % 60);
 	}
 }
