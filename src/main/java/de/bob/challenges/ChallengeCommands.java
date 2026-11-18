@@ -69,9 +69,9 @@ public final class ChallengeCommands {
 						.then(Commands.argument("min", IntegerArgumentType.integer(1, 120))
 								.then(Commands.argument("max", IntegerArgumentType.integer(1, 180))
 										.executes(ChallengeCommands::splitTime))))
-				.then(Commands.literal("joker")
-						.then(Commands.argument("anzahl", IntegerArgumentType.integer(0, 10))
-								.executes(ChallengeCommands::splitJokers)))
+				.then(Commands.literal("jokerchance")
+						.then(Commands.argument("prozent", IntegerArgumentType.integer(0, 100))
+								.executes(ChallengeCommands::splitJokerChance)))
 				.then(Commands.literal("test")
 						.then(Commands.argument("split", StringArgumentType.word())
 								.suggests((ctx, builder) -> SharedSuggestionProvider.suggest(implementedNames(), builder))
@@ -147,13 +147,11 @@ public final class ChallengeCommands {
 		return 1;
 	}
 
-	private static int splitJokers(CommandContext<CommandSourceStack> ctx) {
-		int count = IntegerArgumentType.getInteger(ctx, "anzahl");
-		ChallengeSettings s = ChallengeManager.get().settings();
-		s.splitJokers = count;
-		s.jokersLeft = count;
+	private static int splitJokerChance(CommandContext<CommandSourceStack> ctx) {
+		int percent = IntegerArgumentType.getInteger(ctx, "prozent");
+		ChallengeManager.get().settings().jokerChancePercent = percent;
 		ChallengeManager.get().save();
-		ctx.getSource().sendSuccess(() -> Component.literal("Joker pro Run: " + count).withStyle(ChatFormatting.GREEN), false);
+		ctx.getSource().sendSuccess(() -> Component.literal("Joker-Chance: " + percent + " % pro Ziehung").withStyle(ChatFormatting.GREEN), false);
 		return 1;
 	}
 

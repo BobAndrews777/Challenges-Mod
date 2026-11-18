@@ -100,9 +100,12 @@ public final class ChallengeManager {
 			settings.removedSplits.clear();
 			settings.weaponOwners.clear();
 			settings.toolOwners.clear();
-			settings.jokersLeft = settings.splitJokers;
+			settings.jokersLeft = 0;
 			settings.nextSplitAt = -1;
 			settings.placeTurn = 0;
+			settings.splitLevel = 0;
+			settings.xpBuckets.clear();
+			settings.portalOwners.clear();
 		}
 		settings.save();
 	}
@@ -143,7 +146,9 @@ public final class ChallengeManager {
 
 	/** UHC = keine natürliche Regeneration. Wird per Gamerule in allen Dimensionen gesetzt. */
 	public void applyUhcGameRule(MinecraftServer server) {
-		String value = settings.uhc ? "false" : "true";
+		// Aus bei UHC und beim Hunger-Split (dort regenerieren alle nur gemeinsam)
+		boolean off = settings.uhc || SplitManager.get().isActive(de.bob.challenges.split.SplitType.HUNGER);
+		String value = off ? "false" : "true";
 		for (ServerLevel level : server.getAllLevels()) {
 			server.getCommands().performPrefixedCommand(
 					server.createCommandSourceStack().withLevel(level),
@@ -350,6 +355,8 @@ public final class ChallengeManager {
 			sharedHealth = Float.NaN;
 			lastJumps.clear();
 		}
+
+		SplitManager.get().alwaysTick(server);
 
 		if (tickCounter % 10 == 0) {
 			sendActionBar(server);

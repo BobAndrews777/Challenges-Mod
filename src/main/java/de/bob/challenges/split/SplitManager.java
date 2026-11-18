@@ -9,18 +9,23 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Prediction;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -40,10 +45,53 @@ public final class SplitManager {
 
 	private int countdownTicks = -1;
 	private SplitType pending = null;
+	private boolean pendingJoker = false;
 	private boolean killingAll = false;
 	private long tickCounter = 0;
+	private long alwaysCounter = 0;
+
+	private final StatsSplits stats = new StatsSplits(this);
+	private final MobDamageSplit mobDamage = new MobDamageSplit(this);
+	private final LootSplit loot = new LootSplit(this);
+	private final PortalSplit portals = new PortalSplit(this);
+	private final ChunkSplit chunks = new ChunkSplit(this);
 
 	private SplitManager() {
+	}
+
+	public MobDamageSplit mobDamage() {
+		return mobDamage;
+	}
+
+	public LootSplit loot() {
+		return loot;
+	}
+
+	public PortalSplit portals() {
+		return portals;
+	}
+
+	ChallengeSettings settings() {
+		return s();
+	}
+
+	java.util.Random random() {
+		return manager().random();
+	}
+
+	/** Anzahl der Spieler mit Farbe (1–4). */
+	public int playerCount() {
+		return Math.max(1, Math.min(4, s().playerColors.size()));
+	}
+
+	SplitColor colorOfUuid(String uuid) {
+		return colorOf(s().playerColors.get(uuid));
+	}
+
+	/** Läuft jeden Tick, auch wenn der Timer pausiert ist. */
+	public void alwaysTick(MinecraftServer server) {
+		alwaysCounter++;
+		stats.alwaysTick(server, alwaysCounter);
 	}
 
 	public static SplitManager get() {
@@ -87,12 +135,19 @@ public final class SplitManager {
 		s.removedSplits.clear();
 		s.weaponOwners.clear();
 		s.toolOwners.clear();
-		s.jokersLeft = s.splitJokers;
+		s.jokersLeft = 0;
 		s.nextSplitAt = -1;
 		s.placeTurn = 0;
+		s.splitLevel = 0;
+		s.xpBuckets.clear();
+		s.portalOwners.clear();
+		stats.reset();
+		mobDamage.reset();
 		countdownTicks = -1;
 		pending = null;
+		pendingJoker = false;
 		if (server != null) {
+			manager().applyUhcGameRule(server);
 			sync(server);
 		} else {
 			applyFlags();
@@ -119,14 +174,18 @@ public final class SplitManager {
 			if (countdownTicks % 20 == 0 && countdownTicks > 0) {
 				int seconds = countdownTicks / 20;
 				titleAll(server, Component.literal(String.valueOf(seconds)).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
-						Component.literal("Ein neuer Split kommt …").withStyle(ChatFormatting.GRAY), 0, 22, 0);
+						Component.literal("Gleich passiert etwas …").withStyle(ChatFormatting.GRAY), 0, 22, 0);
 				sound(server, "minecraft:block.note_block.hat", 1.0f);
 			}
 			if (countdownTicks == 0) {
 				SplitType type = pending;
+				boolean joker = pendingJoker;
 				pending = null;
+				pendingJoker = false;
 				countdownTicks = -1;
-				if (type != null) {
+				if (joker) {
+					giveJoker(server);
+				} else if (type != null) {
 					activate(server, type);
 				}
 			} else {
@@ -136,6 +195,10 @@ public final class SplitManager {
 			SplitType next = pickRandom();
 			if (next == null) {
 				s.nextSplitAt = -1; // alle Splits sind schon dran
+			} else if (manager().random().nextInt(100) < s.jokerChancePercent) {
+				// Selten gibt es statt eines Splits einen Joker
+				pendingJoker = true;
+				countdownTicks = 5 * 20;
 			} else {
 				pending = next;
 				countdownTicks = 5 * 20;
@@ -148,6 +211,12 @@ public final class SplitManager {
 					checkClaims(server, player);
 				}
 			}
+		}
+		stats.runningTick(server, tickCounter);
+		portals.tick(server);
+		chunks.tick(server);
+		if (tickCounter % 20 == 0) {
+			loot.tick(server);
 		}
 		if (tickCounter % 20 == 0 && isActive(SplitType.STACKS)) {
 			for (ServerPlayer player : coloredPlayers(server)) {
@@ -196,6 +265,35 @@ public final class SplitManager {
 		if (type == SplitType.PLACING) {
 			s.placeTurn = 0;
 		}
+		if (type == SplitType.LEVEL) {
+			stats.startLevel(server);
+		}
+		if (type == SplitType.HUNGER) {
+			manager().applyUhcGameRule(server);
+		}
+
+		scheduleNext();
+		manager().save();
+		sync(server);
+	}
+
+	/** Statt eines Splits gibt es einen Joker. */
+	private void giveJoker(MinecraftServer server) {
+		ChallengeSettings s = s();
+		s.jokersLeft++;
+		titleAll(server, Component.literal("JOKER").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD),
+				Component.literal("Ihr habt einen Joker bekommen!").withStyle(ChatFormatting.YELLOW), 5, 60, 15);
+		sound(server, "minecraft:ui.toast.challenge_complete", 1.0f);
+
+		MutableComponent message = Component.literal("Ihr habt einen Joker bekommen! Joker: " + s.jokersLeft + " ").withStyle(ChatFormatting.GOLD);
+		if (!s.activeSplits.isEmpty()) {
+			message.append(Component.literal("[Jetzt einsetzen]").withStyle(style -> style
+					.withColor(ChatFormatting.YELLOW)
+					.withBold(true)
+					.withClickEvent(new ClickEvent.RunCommand("/joker"))
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Zeigt die aktiven Splits zum Abschalten")))));
+		}
+		ChallengeManager.broadcast(server, message);
 
 		scheduleNext();
 		manager().save();
@@ -217,6 +315,12 @@ public final class SplitManager {
 		}
 		if (type == SplitType.TOOLS) {
 			s.toolOwners.clear();
+		}
+		if (type == SplitType.HUNGER) {
+			manager().applyUhcGameRule(server);
+		}
+		if (type == SplitType.MOB_DAMAGE) {
+			mobDamage.reset();
 		}
 		ChallengeManager.broadcast(server, Component.literal("Joker eingesetzt: " + type.displayName + " ist nicht mehr geteilt. Übrige Joker: " + s.jokersLeft)
 				.withStyle(ChatFormatting.GOLD));
@@ -602,8 +706,17 @@ public final class SplitManager {
 		}
 	}
 
+	/** Spielt jedem Spieler einen Ton direkt am Ohr ab – ohne Chat-Meldung. */
 	private static void sound(MinecraftServer server, String sound, float pitch) {
-		command(server, "execute as @a at @s run playsound " + sound + " master @s ~ ~ ~ 1 " + pitch);
+		Identifier id = Identifier.parse(sound);
+		if (!BuiltInRegistries.SOUND_EVENT.containsKey(id)) {
+			return;
+		}
+		Holder<SoundEvent> holder = BuiltInRegistries.SOUND_EVENT.wrapAsHolder(BuiltInRegistries.SOUND_EVENT.getValue(id));
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			player.connection.send(new ClientboundSoundPacket(holder, SoundSource.MASTER,
+					player.getX(), player.getY(), player.getZ(), 1.0f, pitch, player.getRandom().nextLong()));
+		}
 	}
 
 	private static void command(MinecraftServer server, String command) {
@@ -615,7 +728,7 @@ public final class SplitManager {
 		StringBuilder sb = new StringBuilder();
 		sb.append("Split-Challenge: ").append(s.splitMode ? "AN" : "AUS");
 		sb.append(" | Zeitfenster: ").append(s.splitMinMinutes).append("–").append(s.splitMaxMinutes).append(" Min");
-		sb.append(" | Joker: ").append(s.jokersLeft).append("/").append(s.splitJokers);
+		sb.append(" | Joker: ").append(s.jokersLeft).append(" (Chance pro Ziehung: ").append(s.jokerChancePercent).append(" %)");
 		List<String> active = new ArrayList<>();
 		for (String name : s.activeSplits) {
 			SplitType type = SplitType.byCommandName(name);

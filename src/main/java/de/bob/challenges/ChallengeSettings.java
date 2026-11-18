@@ -49,7 +49,8 @@ public final class ChallengeSettings {
 	public boolean splitMode = false;
 	public int splitMinMinutes = 5;
 	public int splitMaxMinutes = 10;
-	public int splitJokers = 1;
+	/** Chance in Prozent, dass statt eines Splits ein Joker kommt. */
+	public int jokerChancePercent = 10;
 
 	// Gespeicherter Stand
 	public long timerTicks = 0;
@@ -63,12 +64,17 @@ public final class ChallengeSettings {
 	public Map<String, String> playerColors = new LinkedHashMap<>();
 	/** UUID → zuletzt bekannter Spielername */
 	public Map<String, String> playerNames = new HashMap<>();
-	public int jokersLeft = 1;
+	public int jokersLeft = 0;
 	public long nextSplitAt = -1;
 	public int placeTurn = 0;
 	/** Waffen-/Werkzeugart → UUID des Besitzers */
 	public Map<String, String> weaponOwners = new HashMap<>();
 	public Map<String, String> toolOwners = new HashMap<>();
+	/** Gemeinsames Level beim Level-Split und gesammelte XP je Spieler */
+	public int splitLevel = 0;
+	public Map<String, Integer> xpBuckets = new HashMap<>();
+	/** Portalblock (als Zahl) → UUID des Besitzers */
+	public Map<String, String> portalOwners = new HashMap<>();
 
 	public static Path file() {
 		return FabricLoader.getInstance().getConfigDir().resolve("challenges.json");
@@ -105,12 +111,14 @@ public final class ChallengeSettings {
 		forceMinutes = Math.max(1, Math.min(20, forceMinutes));
 		splitMinMinutes = Math.max(1, Math.min(120, splitMinMinutes));
 		splitMaxMinutes = Math.max(splitMinMinutes, Math.min(180, splitMaxMinutes));
-		splitJokers = Math.max(0, Math.min(10, splitJokers));
+		jokerChancePercent = Math.max(0, Math.min(100, jokerChancePercent));
 		if (activeSplits == null) activeSplits = new ArrayList<>();
 		if (removedSplits == null) removedSplits = new ArrayList<>();
 		if (playerColors == null) playerColors = new LinkedHashMap<>();
 		if (playerNames == null) playerNames = new HashMap<>();
 		if (weaponOwners == null) weaponOwners = new HashMap<>();
 		if (toolOwners == null) toolOwners = new HashMap<>();
+		if (xpBuckets == null) xpBuckets = new HashMap<>();
+		if (portalOwners == null) portalOwners = new HashMap<>();
 	}
 }

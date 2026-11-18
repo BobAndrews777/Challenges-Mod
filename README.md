@@ -1,8 +1,9 @@
 # Challenges – Fabric-Mod für Minecraft 26.3
 
 Challenges im Stil der bekannten YouTube-Challenge-Videos für deinen privaten Fabric-Server.
-Die Mod läuft **nur auf dem Server** – deine Freunde brauchen nichts zu installieren
-(Vanilla, NoRisk usw. funktionieren).
+Die normalen Challenges laufen rein auf dem Server. Für die **Split-Challenge** (Übersicht oben rechts,
+Stack-Limit, Platzier-Reihenfolge) muss die Mod **auch bei allen Spielern** installiert sein
+(zusammen mit Fabric API).
 
 ## Was drin ist
 
@@ -13,6 +14,7 @@ Die Mod läuft **nur auf dem Server** – deine Freunde brauchen nichts zu insta
 | Schaden | Schaden bei jedem Sprung (einstellbar), Tod beim Schleichen |
 | Force | Force Block, Force Mob, Force Item – mit einstellbarem Zeitlimit |
 | Welt | `/challenge reset` löscht die Welt und erstellt beim nächsten Start eine neue |
+| Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: Level, Herzen, Hunger, Mob Damage, Item-Loot, Betten, Platzieren, Atemluft, Waffen, Netherportale, Chunks, Stacks, Werkzeuge, Enderperlen |
 
 ## Befehle (OP nötig)
 
@@ -20,6 +22,12 @@ Die Mod läuft **nur auf dem Server** – deine Freunde brauchen nichts zu insta
 - `/challenge status` – zeigt Timer und aktive Challenges
 - `/challenge reset` – neue Welt (mit Bestätigung, stoppt den Server)
 - `/timer start` · `/timer pause` · `/timer reset`
+- `/split an` · `/split aus` · `/split status`
+- `/split zeit <min> <max>` – Zeitfenster für neue Splits in Minuten
+- `/split jokerchance <prozent>` – wie oft statt eines Splits ein Joker kommt (Standard 10 %)
+- `/split farben` – Farben neu verteilen
+- `/split test <split>` – einen Split sofort aktivieren (zum Ausprobieren)
+- `/joker` – aktive Splits mit Joker-Knopf · `/joker <split>` – Split für immer abschalten
 
 Mach dich vorher in der Server-Konsole zum OP: `op DeinName`
 

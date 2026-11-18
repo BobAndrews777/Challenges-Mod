@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 
 import de.bob.challenges.ChallengesMod;
+import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
 
 /** Client-Teil der Mod: empfängt den Split-Zustand und zeichnet die Übersicht oben rechts. */
@@ -15,5 +17,11 @@ public final class ChallengesClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(SplitSyncPayload.TYPE, (payload, context) -> ClientSplitState.update(payload));
 		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> ClientSplitState.clear());
 		HudElementRegistry.addLast(ChallengesMod.id("split_overview"), SplitHud::extract);
+
+		// Etappe 2: geteilte Leisten und Mob-Damage-Anzeige
+		ClientPlayNetworking.registerGlobalReceiver(SplitStatsPayload.TYPE, (payload, context) -> ClientSplitState.updateStats(payload));
+		ClientPlayNetworking.registerGlobalReceiver(MobDamagePayload.TYPE, (payload, context) -> ClientSplitState.updateMobDamage(payload));
+		SplitBarsHud.register();
+		HudElementRegistry.addLast(ChallengesMod.id("mob_damage"), MobDamageHud::extract);
 	}
 }

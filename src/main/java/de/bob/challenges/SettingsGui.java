@@ -200,13 +200,13 @@ public final class SettingsGui {
 		lore.add(Component.empty());
 		lore.add(Component.literal("Frühestens: " + s().splitMinMinutes + " Min").withStyle(ChatFormatting.AQUA));
 		lore.add(Component.literal("Spätestens: " + s().splitMaxMinutes + " Min").withStyle(ChatFormatting.AQUA));
-		lore.add(Component.literal("Joker pro Run: " + s().splitJokers).withStyle(ChatFormatting.AQUA));
+		lore.add(Component.literal("Joker-Chance: " + s().jokerChancePercent + " %").withStyle(ChatFormatting.AQUA));
 		lore.add(Component.empty());
 		lore.add(Component.literal("Linksklick: frühestens +1").withStyle(ChatFormatting.YELLOW));
 		lore.add(Component.literal("Rechtsklick: frühestens −1").withStyle(ChatFormatting.YELLOW));
 		lore.add(Component.literal("Shift-Links: spätestens +1").withStyle(ChatFormatting.YELLOW));
 		lore.add(Component.literal("Shift-Rechts: spätestens −1").withStyle(ChatFormatting.YELLOW));
-		lore.add(gray("Joker: /split joker <anzahl>"));
+		lore.add(gray("Joker-Chance: /split jokerchance <prozent>"));
 
 		gui.setSlot(slot, new GuiElementBuilder(item("clock"))
 				.setName(Component.literal("Split-Zeitfenster").withStyle(ChatFormatting.AQUA))

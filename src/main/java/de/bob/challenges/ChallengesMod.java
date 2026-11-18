@@ -21,9 +21,12 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
+import de.bob.challenges.split.MobDamagePayload;
 import de.bob.challenges.split.SplitManager;
+import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
 
 public final class ChallengesMod implements ModInitializer {
@@ -51,7 +54,10 @@ public final class ChallengesMod implements ModInitializer {
 		ServerPlayerEvents.JOIN.register(manager::onPlayerReady);
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> manager.onPlayerReady(newPlayer));
 
-		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> manager.modifyDrops(holder, drops));
+		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> {
+			manager.modifyDrops(holder, drops);
+			SplitManager.get().loot().tagLoot(holder, drops);
+		});
 
 		// Split-Challenge
 		SplitManager split = SplitManager.get();
@@ -71,6 +77,22 @@ public final class ChallengesMod implements ModInitializer {
 			return problem == null ? null : new Player.BedSleepingProblem(problem);
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register(split::onEntityRemoved);
+
+		// Split-Challenge Etappe 2
+		PayloadTypeRegistry.clientboundPlay().register(SplitStatsPayload.TYPE, SplitStatsPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(MobDamagePayload.TYPE, MobDamagePayload.CODEC);
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> split.mobDamage().allowDamage(entity, source));
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) ->
+				split.mobDamage().afterDamage(entity, source, damageTaken));
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> split.mobDamage().allowDeath(entity, source, amount));
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> split.mobDamage().onRemoved(entity));
+		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
+			if (entity instanceof LivingEntity living) {
+				split.mobDamage().onRemoved(living);
+			}
+		});
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.loot().onEntityLoad(entity));
+		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.portals().onUseBlock(player, level, hitResult));
 
 		LOGGER.info("Challenges-Mod geladen{}", worldWasReset ? " (neue Welt)" : "");
 	}

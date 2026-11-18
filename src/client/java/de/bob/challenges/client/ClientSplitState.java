@@ -1,8 +1,12 @@
 package de.bob.challenges.client;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import de.bob.challenges.split.SplitFlags;
+import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
 
 /** Was der Client zuletzt vom Server über die Split-Challenge erfahren hat. */
@@ -10,6 +14,8 @@ public final class ClientSplitState {
 	public static volatile List<SplitSyncPayload.Entry> players = List.of();
 	public static volatile List<String> activeSplits = List.of();
 	public static volatile String placeTurn = "";
+	public static volatile SplitStatsPayload stats = new SplitStatsPayload(0, 0, List.of());
+	public static final Map<Integer, MobDamagePayload> mobDamage = new ConcurrentHashMap<>();
 
 	private ClientSplitState() {
 	}
@@ -23,7 +29,28 @@ public final class ClientSplitState {
 		SplitFlags.stacksActive = payload.stacks();
 	}
 
+	public static void updateStats(SplitStatsPayload payload) {
+		stats = payload;
+	}
+
+	public static void updateMobDamage(MobDamagePayload payload) {
+		if (payload.remove()) {
+			mobDamage.remove(payload.entityId());
+		} else {
+			if (mobDamage.size() > 500) {
+				mobDamage.clear();
+			}
+			mobDamage.put(payload.entityId(), payload);
+		}
+	}
+
+	public static boolean has(int flag) {
+		return (stats.flags() & flag) != 0 && !stats.players().isEmpty();
+	}
+
 	public static void clear() {
+		stats = new SplitStatsPayload(0, 0, List.of());
+		mobDamage.clear();
 		players = List.of();
 		activeSplits = List.of();
 		placeTurn = "";
