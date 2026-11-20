@@ -31,6 +31,7 @@ import net.minecraft.world.scores.Team;
  */
 public final class Disguises {
 	private static final String TEAM = "challenges_mobs";
+	private static final UUID NOBODY = new UUID(0, 0);
 
 	private final MobChallenge challenge;
 	/** Spieler → Kostüm */
@@ -40,6 +41,8 @@ public final class Disguises {
 	private final Map<UUID, Integer> shownSize = new HashMap<>();
 	private final Map<UUID, Long> spawnedAt = new HashMap<>();
 	private long tick;
+	private final java.util.List<Mob> orphans = new java.util.ArrayList<>();
+	private java.util.List<Integer> lastSentIds = java.util.List.of();
 
 	Disguises(MobChallenge challenge) {
 		this.challenge = challenge;
@@ -60,6 +63,15 @@ public final class Disguises {
 
 	void tick(MinecraftServer server) {
 		tick++;
+		if (!orphans.isEmpty()) {
+			for (Mob orphan : orphans) {
+				if (!orphan.isRemoved()) {
+					orphan.ejectPassengers();
+					orphan.discard();
+				}
+			}
+			orphans.clear();
+		}
 		Set<UUID> keep = new HashSet<>();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			MobKind kind = challenge.kindOf(player);
@@ -86,17 +98,43 @@ public final class Disguises {
 				}
 			}
 			follow(mob, player);
-			// Dem Spieler sagen, welches Kostüm seins ist: in der Ich-Perspektive blendet er es aus, in F5 sieht er sich als Mob
-			long age = tick - spawnedAt.getOrDefault(mob.getUUID(), tick);
-			if ((age < 10 || tick % 20 == 0) && ServerPlayNetworking.canSend(player, OwnDisguisePayload.TYPE)) {
-				ServerPlayNetworking.send(player, new OwnDisguisePayload(mob.getId()));
-			}
 		}
 		for (UUID id : new HashSet<>(byPlayer.keySet())) {
 			if (!keep.contains(id)) {
 				remove(server, id);
 			}
 		}
+		sendMap(server);
+	}
+
+	/**
+	 * Allen Clients sagen, welches Kostüm zu wem gehört. Die Clients setzen das Kostüm dann selbst jeden Tick
+	 * genau auf den Spieler – so hängt es nicht hinterher. Und das eigene wird in der Ich-Perspektive ausgeblendet.
+	 */
+	private void sendMap(MinecraftServer server) {
+		java.util.List<Integer> ids = new java.util.ArrayList<>();
+		java.util.List<String> players = new java.util.ArrayList<>();
+		for (Map.Entry<UUID, Mob> entry : byPlayer.entrySet()) {
+			ids.add(entry.getValue().getId());
+			players.add(entry.getKey().toString());
+		}
+		boolean changed = !ids.equals(lastSentIds);
+		if (!changed && tick % 20 != 0) {
+			return;
+		}
+		lastSentIds = ids;
+		DisguiseMapPayload payload = new DisguiseMapPayload(ids, players);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (ServerPlayNetworking.canSend(player, DisguiseMapPayload.TYPE)) {
+				ServerPlayNetworking.send(player, payload);
+			}
+		}
+	}
+
+	/** Das Kostüm eines Spielers (darauf sitzen auch die Reiter). */
+	public Mob of(ServerPlayer player) {
+		Mob mob = byPlayer.get(player.getUUID());
+		return mob == null || mob.isRemoved() ? null : mob;
 	}
 
 	private Mob spawn(MinecraftServer server, ServerPlayer player, MobKind kind) {
@@ -141,6 +179,10 @@ public final class Disguises {
 		mob.setYHeadRot(player.getYHeadRot());
 		mob.setYBodyRot(player.yBodyRot);
 		mob.fallDistance = 0;
+		mob.setPortalCooldown(200);   // Kostüme gehen nie selbst durch Portale
+		for (Entity passenger : mob.getPassengers()) {
+			mob.positionRider(passenger);
+		}
 	}
 
 	private static void setSlimeSize(Mob mob, int size) {
@@ -203,10 +245,11 @@ public final class Disguises {
 
 	/** Nach einem Neustart: übrig gebliebene Kostüme ohne Spieler entfernen. */
 	public void onEntityLoad(Entity entity) {
-		if (entity instanceof Mob mob && !owners.containsKey(mob.getUUID()) && mob.isNoAi() && mob.isSilent()
+		if (entity instanceof Mob mob && byPlayer.get(owners.getOrDefault(mob.getUUID(), NOBODY)) != mob && mob.isNoAi() && mob.isSilent()
 				&& mob.isNoGravity() && mob.isCustomNameVisible() && mob.getTeam() != null
 				&& TEAM.equals(mob.getTeam().getName())) {
-			mob.discard();
+			// erst nach dem Laden (im nächsten Tick) entfernen
+			orphans.add(mob);
 		}
 	}
 }

@@ -552,18 +552,24 @@ public final class MobChallenge {
 				return InteractionResult.SUCCESS;
 			}
 			if (saddled.contains(mobPlayer.getUUID()) && stack.isEmpty()) {
-				if (mobPlayer.getPassengers().size() >= kind.seats()) {
+				// Man sitzt auf dem Mob-Modell des Spielers (auf Spielern selbst lässt Minecraft niemanden reiten)
+				Mob seat = disguises.of(mobPlayer);
+				if (seat == null) {
+					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Das Mob-Modell ist noch nicht da – gleich noch mal versuchen")
+							.withStyle(ChatFormatting.GRAY)));
+					return InteractionResult.FAIL;
+				}
+				if (seat.hasPassenger(user)) {
+					return InteractionResult.SUCCESS;
+				}
+				if (seat.getPassengers().size() >= kind.seats()) {
 					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Kein Platz mehr!").withStyle(ChatFormatting.RED)));
 					return InteractionResult.FAIL;
 				}
 				if (user.isPassenger()) {
 					user.stopRiding();
 				}
-				if (user.startRiding(mobPlayer, true, true)) {
-					// Beiden Seiten sofort Bescheid geben (der Server schickt das sonst nur an Zuschauer)
-					var passengers = new net.minecraft.network.protocol.game.ClientboundSetPassengersPacket(mobPlayer);
-					mobPlayer.connection.send(passengers);
-					user.connection.send(passengers);
+				if (user.startRiding(seat, true, true)) {
 					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Du reitest auf "
 							+ mobPlayer.getName().getString() + " – Schleichen zum Absteigen").withStyle(ChatFormatting.GREEN)));
 					return InteractionResult.SUCCESS;
@@ -876,7 +882,8 @@ public final class MobChallenge {
 			}
 			case STRIDER -> {
 				// Reiter auf dem Schreiter verbrennen nicht
-				for (Entity passenger : player.getPassengers()) {
+				Mob seat = disguises.of(player);
+				for (Entity passenger : seat == null ? player.getPassengers() : seat.getPassengers()) {
 					if (passenger instanceof ServerPlayer rider) {
 						rider.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 40, 0, true, false, true));
 					}

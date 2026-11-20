@@ -130,7 +130,7 @@ public final class ChallengesMod implements ModInitializer {
 		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
 		PayloadTypeRegistry.clientboundPlay().register(MotionPayload.TYPE, MotionPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.ReelPayload.TYPE, de.bob.challenges.mobs.ReelPayload.CODEC);
-		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.OwnDisguisePayload.TYPE, de.bob.challenges.mobs.OwnDisguisePayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.DisguiseMapPayload.TYPE, de.bob.challenges.mobs.DisguiseMapPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(DimsPayload.TYPE, DimsPayload.CODEC);
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) ->
 				mobs.abilities().onDamage(entity, source));

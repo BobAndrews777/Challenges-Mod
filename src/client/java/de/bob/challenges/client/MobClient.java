@@ -31,6 +31,13 @@ import de.bob.challenges.mobs.MotionPayload;
 import de.bob.challenges.mobs.MobFlags;
 import de.bob.challenges.mobs.MobStatePayload;
 import de.bob.challenges.mobs.ReelPayload;
+import de.bob.challenges.mobs.DisguiseMapPayload;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +58,7 @@ public final class MobClient {
 	private static long dashReadyAt;
 	private static boolean wasJump;
 	private static volatile Reel reel;
+	private static volatile Map<Integer, UUID> disguises = Map.of();
 	private static int lastReelIndex = -1;
 
 	/** Glücksrad-Walze: Namen laufen von oben nach unten durch und bleiben auf dem ausgelosten Mob stehen. */
@@ -84,11 +92,27 @@ public final class MobClient {
 			}
 			wasJump = jump;
 			tickLavaWalking(client);
+			snapDisguises(client);
 		});
 
 		ClientPlayNetworking.registerGlobalReceiver(ReelPayload.TYPE, (payload, context) -> startReel(payload));
-		ClientPlayNetworking.registerGlobalReceiver(de.bob.challenges.mobs.OwnDisguisePayload.TYPE,
-				(payload, context) -> MobFlags.ownDisguiseId = payload.entityId());
+		ClientPlayNetworking.registerGlobalReceiver(DisguiseMapPayload.TYPE, (payload, context) -> {
+			Map<Integer, UUID> map = new HashMap<>();
+			int own = -1;
+			LocalPlayer self = Minecraft.getInstance().player;
+			for (int i = 0; i < payload.ids().size(); i++) {
+				try {
+					UUID owner = UUID.fromString(payload.owners().get(i));
+					map.put(payload.ids().get(i), owner);
+					if (self != null && owner.equals(self.getUUID())) {
+						own = payload.ids().get(i);
+					}
+				} catch (IllegalArgumentException ignored) {
+				}
+			}
+			disguises = map;
+			MobFlags.ownDisguiseId = own;
+		});
 
 		// Dash / Hüpfer vom Server direkt auf den eigenen Spieler anwenden
 		ClientPlayNetworking.registerGlobalReceiver(MotionPayload.TYPE, (payload, context) -> {
@@ -128,6 +152,7 @@ public final class MobClient {
 			MobFlags.clientKind = "";
 			MobFlags.dims.clear();
 			MobFlags.ownDisguiseId = -1;
+			disguises = Map.of();
 		});
 		HudElementRegistry.addLast(ChallengesMod.id("mob_state"), MobClient::extract);
 		HudElementRegistry.addLast(ChallengesMod.id("mob_reel"), MobClient::extractReel);
@@ -148,6 +173,43 @@ public final class MobClient {
 		if (player.isInLava()) {
 			Vec3 motion = player.getDeltaMovement();
 			player.setDeltaMovement(motion.x, Math.max(motion.y, 0.25), motion.z);
+		}
+	}
+
+	/**
+	 * Die Mob-Modelle kommen vom Server und würden dort hinterherhängen. Darum setzt jeder Client sie
+	 * jeden Tick selbst genau auf ihren Spieler – samt Drehung und der Position vom letzten Tick,
+	 * damit sie genauso flüssig gezeichnet werden wie der Spieler.
+	 */
+	private static void snapDisguises(Minecraft client) {
+		ClientLevel level = client.level;
+		if (level == null || disguises.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<Integer, UUID> entry : disguises.entrySet()) {
+			Entity mob = level.getEntity(entry.getKey());
+			Player owner = level.getPlayerByUUID(entry.getValue());
+			if (mob == null || owner == null) {
+				continue;
+			}
+			mob.setPos(owner.getX(), owner.getY(), owner.getZ());
+			mob.xo = owner.xo;
+			mob.yo = owner.yo;
+			mob.zo = owner.zo;
+			mob.setYRot(owner.getYRot());
+			mob.yRotO = owner.yRotO;
+			mob.setXRot(owner.getXRot());
+			mob.xRotO = owner.xRotO;
+			mob.setDeltaMovement(owner.getDeltaMovement());
+			if (mob instanceof LivingEntity living) {
+				living.yBodyRot = owner.yBodyRot;
+				living.yBodyRotO = owner.yBodyRotO;
+				living.yHeadRot = owner.yHeadRot;
+				living.yHeadRotO = owner.yHeadRotO;
+			}
+			for (Entity passenger : mob.getPassengers()) {
+				mob.positionRider(passenger);
+			}
 		}
 	}
 
