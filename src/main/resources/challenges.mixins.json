@@ -8,7 +8,8 @@
 		"ItemStackMixin",
 		"ItemEntityMixin",
 		"AbstractContainerMenuMixin",
-		"ResultSlotMixin"
+		"ResultSlotMixin",
+		"PlayerEdgeMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

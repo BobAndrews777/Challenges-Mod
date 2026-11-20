@@ -10,6 +10,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
+import de.bob.challenges.mobs.MobChallenge;
 import de.bob.challenges.split.SplitManager;
 
 import net.minecraft.ChatFormatting;
@@ -106,6 +107,8 @@ public final class ChallengeManager {
 			settings.splitLevel = 0;
 			settings.xpBuckets.clear();
 			settings.portalOwners.clear();
+			settings.skinSwap.clear();
+			settings.mobAssignments.clear();
 		}
 		settings.save();
 	}
@@ -167,6 +170,7 @@ public final class ChallengeManager {
 		running = true;
 		broadcast(server, Component.literal("Der Timer läuft! Viel Glück!").withStyle(ChatFormatting.GREEN));
 		SplitManager.get().onTimerStart(server);
+		MobChallenge.get().onTimerStart(server);
 		return true;
 	}
 
@@ -183,6 +187,7 @@ public final class ChallengeManager {
 		settings.ended = false;
 		force.reset();
 		SplitManager.get().resetRun(server);
+		MobChallenge.get().reset(server);
 		save();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (player.isSpectator()) {
@@ -243,8 +248,8 @@ public final class ChallengeManager {
 			return;
 		}
 		if (entity instanceof ServerPlayer player) {
-			if (settings.splitMode) {
-				// Split-Challenge: Stirbt einer, sterben alle
+			if (settings.splitMode || settings.mobMode) {
+				// Split- und Mob-Challenge: Stirbt einer, sterben alle
 				if (SplitManager.get().onPlayerDeath(server, player)) {
 					return;
 				}
@@ -357,6 +362,7 @@ public final class ChallengeManager {
 		}
 
 		SplitManager.get().alwaysTick(server);
+		MobChallenge.get().tick(server);
 
 		if (tickCounter % 10 == 0) {
 			sendActionBar(server);

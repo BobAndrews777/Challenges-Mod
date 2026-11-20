@@ -9,6 +9,8 @@ public final class SplitFlags {
 	public static volatile boolean stacksActive = false;
 	public static volatile boolean placingActive = false;
 	public static volatile String placeTurnName = "";
+	/** Split „Sneaken“: Kantenschutz beim Schleichen nur, wenn alle gleichzeitig schleichen (nur Client). */
+	public static volatile boolean edgeProtectionDisabled = false;
 
 	public static final int SPLIT_STACK_SIZE = 16;
 

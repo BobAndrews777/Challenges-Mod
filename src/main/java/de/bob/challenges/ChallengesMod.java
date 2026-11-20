@@ -14,9 +14,11 @@ import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -24,7 +26,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
+import de.bob.challenges.mobs.AbilityPayload;
+import de.bob.challenges.mobs.MobChallenge;
+import de.bob.challenges.mobs.MobStatePayload;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.MovementPayload;
+import de.bob.challenges.split.SkinPayload;
 import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitManager;
 import de.bob.challenges.split.SplitStatsPayload;
@@ -102,6 +109,28 @@ public final class ChallengesMod implements ModInitializer {
 		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> split.checkHandUse(player));
 		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.checkHandUse(player));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.onEntityLoad(entity));
+
+		// Mob-Challenge
+		MobChallenge mobs = MobChallenge.get();
+		PayloadTypeRegistry.serverboundPlay().register(AbilityPayload.TYPE, AbilityPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(MobStatePayload.TYPE, MobStatePayload.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(AbilityPayload.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			player.level().getServer().execute(() -> mobs.onAbility(player, payload.ability()));
+		});
+		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
+		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source));
+		ServerPlayerEvents.JOIN.register(player -> {
+			if (player.level().getServer() != null) {
+				mobs.onJoin(player.level().getServer(), player);
+			}
+		});
+
+		// Split-Challenge Etappe 4: Bewegung und Abbauen
+		PayloadTypeRegistry.clientboundPlay().register(MovementPayload.TYPE, MovementPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(SkinPayload.TYPE, SkinPayload.CODEC);
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> split.mining().onBreak(level, player, pos, state));
 
 		LOGGER.info("Challenges-Mod geladen{}", worldWasReset ? " (neue Welt)" : "");
 	}

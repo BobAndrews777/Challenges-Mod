@@ -52,6 +52,11 @@ public final class ChallengeSettings {
 	/** Chance in Prozent, dass statt eines Splits ein Joker kommt. */
 	public int jokerChancePercent = 10;
 
+	// Mob-Challenge
+	public boolean mobMode = false;
+	/** UUID → MobKind-Name */
+	public Map<String, String> mobAssignments = new HashMap<>();
+
 	// Gespeicherter Stand
 	public long timerTicks = 0;
 	public boolean ended = false;
@@ -75,6 +80,8 @@ public final class ChallengeSettings {
 	public Map<String, Integer> xpBuckets = new HashMap<>();
 	/** Portalblock (als Zahl) → UUID des Besitzers */
 	public Map<String, String> portalOwners = new HashMap<>();
+	/** Split „Skins“: Spielername → Name, dessen Skin er trägt */
+	public Map<String, String> skinSwap = new HashMap<>();
 
 	public static Path file() {
 		return FabricLoader.getInstance().getConfigDir().resolve("challenges.json");
@@ -120,5 +127,7 @@ public final class ChallengeSettings {
 		if (toolOwners == null) toolOwners = new HashMap<>();
 		if (xpBuckets == null) xpBuckets = new HashMap<>();
 		if (portalOwners == null) portalOwners = new HashMap<>();
+		if (skinSwap == null) skinSwap = new HashMap<>();
+		if (mobAssignments == null) mobAssignments = new HashMap<>();
 	}
 }

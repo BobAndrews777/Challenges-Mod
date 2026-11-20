@@ -129,6 +129,9 @@ public final class SharedSlots {
 
 	/** Spiegel-Kopien außerhalb der geteilten Slots (z. B. auf dem Mauszeiger) entfernen. */
 	private void removeMirrors(ServerPlayer player, List<SplitColor> colors, int n) {
+		if (de.bob.challenges.mobs.MobChallenge.get().kindOf(player) != null) {
+			return; // gesperrte Slots der Mob-Challenge nicht anfassen
+		}
 		Inventory inventory = player.getInventory();
 		for (int index = 0; index <= OFFHAND; index++) {
 			Integer owner = colors == null ? null : owner(index, n);

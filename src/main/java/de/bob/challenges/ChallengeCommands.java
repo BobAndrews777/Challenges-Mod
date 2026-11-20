@@ -17,6 +17,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -24,6 +25,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionLevel;
 
+import de.bob.challenges.mobs.MobChallenge;
+import de.bob.challenges.mobs.MobKind;
 import de.bob.challenges.split.SplitManager;
 import de.bob.challenges.split.SplitType;
 
@@ -77,12 +80,80 @@ public final class ChallengeCommands {
 								.suggests((ctx, builder) -> SharedSuggestionProvider.suggest(implementedNames(), builder))
 								.executes(ChallengeCommands::splitTest))));
 
+		dispatcher.register(Commands.literal("mobs")
+				.requires(PermissionPredicates.require(ChallengesMod.id("admin"), PermissionLevel.GAMEMASTERS))
+				.executes(ChallengeCommands::mobStatus)
+				.then(Commands.literal("status").executes(ChallengeCommands::mobStatus))
+				.then(Commands.literal("an").executes(ctx -> setMobMode(ctx, true)))
+				.then(Commands.literal("aus").executes(ctx -> setMobMode(ctx, false)))
+				.then(Commands.literal("neu").executes(ChallengeCommands::mobReroll))
+				.then(Commands.literal("setze")
+						.then(Commands.argument("spieler", EntityArgument.player())
+								.then(Commands.argument("mob", StringArgumentType.word())
+										.suggests((ctx, builder) -> SharedSuggestionProvider.suggest(mobNames(), builder))
+										.executes(ChallengeCommands::mobSet)))));
+
 		dispatcher.register(Commands.literal("joker")
 				.requires(PermissionPredicates.require(ChallengesMod.id("admin"), PermissionLevel.GAMEMASTERS))
 				.executes(ChallengeCommands::jokerList)
 				.then(Commands.argument("split", StringArgumentType.word())
 						.suggests((ctx, builder) -> SharedSuggestionProvider.suggest(activeNames(), builder))
 						.executes(ChallengeCommands::jokerUse)));
+	}
+
+	// ------------------------------------------------------------------
+	// Mob-Challenge
+	// ------------------------------------------------------------------
+
+	private static List<String> mobNames() {
+		List<String> names = new ArrayList<>();
+		for (MobKind kind : MobKind.values()) {
+			names.add(kind.name().toLowerCase(Locale.ROOT));
+		}
+		return names;
+	}
+
+	private static int mobStatus(CommandContext<CommandSourceStack> ctx) {
+		String text = MobChallenge.get().statusText(ctx.getSource().getServer());
+		ctx.getSource().sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GOLD), false);
+		return 1;
+	}
+
+	private static int setMobMode(CommandContext<CommandSourceStack> ctx, boolean on) {
+		MinecraftServer server = ctx.getSource().getServer();
+		ChallengeManager.get().settings().mobMode = on;
+		ChallengeManager.get().save();
+		if (on && ChallengeManager.get().isRunning()) {
+			MobChallenge.get().onTimerStart(server);
+		}
+		ChallengeManager.broadcast(server, Component.literal("Mob-Challenge: " + (on ? "AN" : "AUS")).withStyle(ChatFormatting.WHITE));
+		return 1;
+	}
+
+	private static int mobReroll(CommandContext<CommandSourceStack> ctx) {
+		MinecraftServer server = ctx.getSource().getServer();
+		MobChallenge.get().reset(server);
+		ChallengeManager.get().save();
+		if (ChallengeManager.get().isRunning()) {
+			MobChallenge.get().onTimerStart(server);
+		}
+		ctx.getSource().sendSuccess(() -> Component.literal("Alle Mobs werden neu ausgelost.").withStyle(ChatFormatting.GREEN), false);
+		return 1;
+	}
+
+	private static int mobSet(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+		ServerPlayer target = EntityArgument.getPlayer(ctx, "spieler");
+		MobKind kind = MobKind.byName(StringArgumentType.getString(ctx, "mob"));
+		if (kind == null) {
+			ctx.getSource().sendFailure(Component.literal("Unbekannter Mob."));
+			return 0;
+		}
+		if (!ChallengeManager.get().settings().mobMode) {
+			ctx.getSource().sendFailure(Component.literal("Schalte zuerst die Mob-Challenge an: /mobs an"));
+			return 0;
+		}
+		MobChallenge.get().transform(ctx.getSource().getServer(), target, kind);
+		return 1;
 	}
 
 	// ------------------------------------------------------------------

@@ -14,7 +14,8 @@ Stack-Limit, Platzier-Reihenfolge) muss die Mod **auch bei allen Spielern** inst
 | Schaden | Schaden bei jedem Sprung (einstellbar), Tod beim Schleichen |
 | Force | Force Block, Force Mob, Force Item – mit einstellbarem Zeitlimit |
 | Welt | `/challenge reset` löscht die Welt und erstellt beim nächsten Start eine neue |
-| Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: Craften, Level, Inventar, Herzen, Hunger, Hotbar, Mob Damage, Rüstung, Item-Loot, Betten, Platzieren, Main Hand, Atemluft, Waffen, Netherportale, Chunks, Stacks, Werkzeuge, Enderperlen |
+| Mob-Challenge | Beim Timer-Start wird jeder nacheinander in einen zufälligen Mob verwandelt (Leben, Größe, Essen, Fallschaden, Fliegen, Schwächen, Fähigkeiten auf R/G). Etappe 1: 17 von 22 Mobs |
+| Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: alle 24 |
 
 ## Befehle (OP nötig)
 
@@ -27,6 +28,7 @@ Stack-Limit, Platzier-Reihenfolge) muss die Mod **auch bei allen Spielern** inst
 - `/split jokerchance <prozent>` – wie oft statt eines Splits ein Joker kommt (Standard 10 %)
 - `/split farben` – Farben neu verteilen
 - `/split test <split>` – einen Split sofort aktivieren (zum Ausprobieren)
+- `/mobs an` · `/mobs aus` · `/mobs status` · `/mobs neu` · `/mobs setze <spieler> <mob>` (zum Testen)
 - `/joker` – aktive Splits mit Joker-Knopf · `/joker <split>` – Split für immer abschalten
 
 Mach dich vorher in der Server-Konsole zum OP: `op DeinName`

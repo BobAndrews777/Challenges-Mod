@@ -7,6 +7,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 
 import de.bob.challenges.ChallengesMod;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.MovementPayload;
+import de.bob.challenges.split.SkinPayload;
 import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
@@ -29,5 +31,12 @@ public final class ChallengesClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(SlotInfoPayload.TYPE, (payload, context) -> ClientSplitState.updateSlotInfo(payload));
 		SlotColorsScreen.register();
 		HudElementRegistry.addLast(ChallengesMod.id("main_hand"), MainHandHud::extract);
+
+		// Etappe 4: Bewegung
+		ClientPlayNetworking.registerGlobalReceiver(MovementPayload.TYPE, (payload, context) -> ClientSplitState.updateMovement(payload));
+		ClientPlayNetworking.registerGlobalReceiver(SkinPayload.TYPE, (payload, context) -> ClientSplitState.updateSkins(payload));
+
+		// Mob-Challenge: Fähigkeits-Tasten und Anzeige
+		MobClient.register();
 	}
 }

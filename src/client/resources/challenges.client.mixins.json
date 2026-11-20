@@ -3,7 +3,8 @@
 	"package": "de.bob.challenges.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"AbstractContainerScreenAccessor"
+		"AbstractContainerScreenAccessor",
+		"AbstractClientPlayerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
