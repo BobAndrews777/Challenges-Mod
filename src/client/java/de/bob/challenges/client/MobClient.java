@@ -78,7 +78,7 @@ public final class MobClient {
 				send(2);
 			}
 			// Kamel: Leertaste = Dash
-			boolean jump = client.player != null && client.screen == null && client.options.keyJump.isDown();
+			boolean jump = client.player != null && client.options.keyJump.isDown();
 			if (jump && !wasJump) {
 				localDash(client, true);
 			}
