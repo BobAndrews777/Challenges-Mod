@@ -203,7 +203,7 @@ public final class Disguises {
 	}
 
 	/** Nach einem Neustart: übrig gebliebene Kostüme ohne Spieler entfernen. */
-	void onEntityLoad(Entity entity) {
+	public void onEntityLoad(Entity entity) {
 		if (entity instanceof Mob mob && !owners.containsKey(mob.getUUID()) && mob.isNoAi() && mob.isSilent()
 				&& mob.isNoGravity() && mob.isCustomNameVisible() && mob.getTeam() != null
 				&& TEAM.equals(mob.getTeam().getName())) {
