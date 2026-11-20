@@ -7,12 +7,12 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -34,8 +34,12 @@ public abstract class LavaCollisionMixin {
 	@Inject(method = "getCollisionShape(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/phys/shapes/CollisionContext;)Lnet/minecraft/world/phys/shapes/VoxelShape;",
 			at = @At("HEAD"), cancellable = true, require = 0)
 	private void challenges$lavaFloor(BlockGetter level, BlockPos pos, CollisionContext context, CallbackInfoReturnable<VoxelShape> cir) {
+		// Zuerst den Kontext prüfen: beim Spielstart (Block-Cache) gibt es noch keine Tags und kein Wesen
+		if (!(context instanceof EntityCollisionContext entityContext)) {
+			return;
+		}
 		FluidState fluid = ((BlockState) (Object) this).getFluidState();
-		if (fluid.isEmpty() || !fluid.is(FluidTags.LAVA) || !(context instanceof EntityCollisionContext entityContext)) {
+		if (fluid.isEmpty() || !challenges$isLava(fluid)) {
 			return;
 		}
 		Entity entity = entityContext.getEntity();
@@ -43,9 +47,14 @@ public abstract class LavaCollisionMixin {
 			return;
 		}
 		// Nur die oberste Lava-Schicht, und nur wenn man nicht schon drinsteckt
-		if (level.getFluidState(pos.above()).is(FluidTags.LAVA) || entity.getY() < pos.getY() + CHALLENGES$TOP - 0.05) {
+		if (challenges$isLava(level.getFluidState(pos.above())) || entity.getY() < pos.getY() + CHALLENGES$TOP - 0.05) {
 			return;
 		}
 		cir.setReturnValue(CHALLENGES$SHAPE);
+	}
+
+	@Unique
+	private static boolean challenges$isLava(FluidState fluid) {
+		return fluid.getType() == Fluids.LAVA || fluid.getType() == Fluids.FLOWING_LAVA;
 	}
 }
