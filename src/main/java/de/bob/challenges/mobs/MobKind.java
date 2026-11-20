@@ -139,6 +139,15 @@ public enum MobKind {
 		};
 	}
 
+	/** Wie hoch man ohne Springen hochläuft (Spieler 0,6) */
+	public double stepHeight() {
+		return switch (this) {
+			case CAMEL -> 1.5;
+			case DONKEY, STRIDER, IRON_GOLEM, WARDEN, ENDERMAN -> 1.0;
+			default -> 0.6;
+		};
+	}
+
 	/** Reitbar? Wie viele Reiter? */
 	public int seats() {
 		return switch (this) {

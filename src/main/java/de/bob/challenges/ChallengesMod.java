@@ -27,6 +27,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
 import de.bob.challenges.mobs.AbilityPayload;
+import de.bob.challenges.mobs.DimsPayload;
+import de.bob.challenges.mobs.MenuBook;
+import de.bob.challenges.mobs.MotionPayload;
 import de.bob.challenges.mobs.MobChallenge;
 import de.bob.challenges.mobs.MobStatePayload;
 import de.bob.challenges.split.MobDamagePayload;
@@ -58,6 +61,7 @@ public final class ChallengesMod implements ModInitializer {
 
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) ->
 				!(player instanceof ServerPlayer serverPlayer) || manager.allowBlockBreak(serverPlayer));
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> manager.onBlockBroken(level, player, pos, state));
 
 		ServerPlayerEvents.JOIN.register(manager::onPlayerReady);
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> manager.onPlayerReady(newPlayer));
@@ -118,7 +122,13 @@ public final class ChallengesMod implements ModInitializer {
 			ServerPlayer player = context.player();
 			player.level().getServer().execute(() -> mobs.onAbility(player, payload.ability()));
 		});
+		UseItemCallback.EVENT.register((player, level, hand) -> MenuBook.onUse(player, hand));
 		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
+		PayloadTypeRegistry.clientboundPlay().register(MotionPayload.TYPE, MotionPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(DimsPayload.TYPE, DimsPayload.CODEC);
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) ->
+				mobs.abilities().onDamage(entity, source));
+		ServerPlayerEvents.JOIN.register(MenuBook::giveIfMissing);
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source));
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));

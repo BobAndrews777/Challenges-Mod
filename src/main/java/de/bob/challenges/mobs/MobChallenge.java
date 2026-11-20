@@ -58,6 +58,8 @@ public final class MobChallenge {
 	private final MobAbilities abilities = new MobAbilities(this);
 	private final ArrayDeque<UUID> transformQueue = new ArrayDeque<>();
 	private int transformDelay = 0;
+	private int countdown = -1;
+	private final Map<UUID, float[]> sentDims = new HashMap<>();
 	/** Spieler, deren Werte wir verändert haben (zum Zurücksetzen) */
 	private final Set<UUID> touched = new HashSet<>();
 	/** Eisengolem: letzte erlaubte Lebenspunkte (Heilen nur mit Eisen) */
@@ -120,6 +122,7 @@ public final class MobChallenge {
 	}
 
 	public void onJoin(MinecraftServer server, ServerPlayer player) {
+		sentDims.clear();
 		if (s().mobMode && ChallengeManager.get().isRunning() && kindOf(player) == null && !player.isSpectator()) {
 			transformQueue.add(player.getUUID());
 		}
@@ -178,6 +181,7 @@ public final class MobChallenge {
 	public void reset(MinecraftServer server) {
 		s().mobAssignments.clear();
 		transformQueue.clear();
+		countdown = -1;
 		golemHealth.clear();
 		magmaSize.clear();
 		saddled.clear();
@@ -240,7 +244,9 @@ public final class MobChallenge {
 			jump = size == 3 ? 0.85 : size == 2 ? 0.62 : 0.42; // 4 / 2 / 1 Block(e)
 		}
 		setBase(player.getAttribute(Attributes.MAX_HEALTH), maxHealth);
+		// Größe sorgt für die richtige Höhe; der Hitbox-Mixin gleicht zusätzlich die Breite an den Mob an
 		setBase(player.getAttribute(Attributes.SCALE), scale);
+		setBase(player.getAttribute(Attributes.STEP_HEIGHT), kind.stepHeight());
 		setBase(player.getAttribute(Attributes.JUMP_STRENGTH), jump);
 		setBase(player.getAttribute(Attributes.SAFE_FALL_DISTANCE), kind.safeFallDistance());
 		setBase(player.getAttribute(Attributes.FALL_DAMAGE_MULTIPLIER), kind.fallDamageMultiplier());
@@ -296,6 +302,7 @@ public final class MobChallenge {
 	private void restore(ServerPlayer player) {
 		setBase(player.getAttribute(Attributes.MAX_HEALTH), 20.0);
 		setBase(player.getAttribute(Attributes.SCALE), 1.0);
+		setBase(player.getAttribute(Attributes.STEP_HEIGHT), 0.6);
 		setBase(player.getAttribute(Attributes.JUMP_STRENGTH), 0.42);
 		setBase(player.getAttribute(Attributes.SAFE_FALL_DISTANCE), 3.0);
 		setBase(player.getAttribute(Attributes.FALL_DAMAGE_MULTIPLIER), 1.0);
@@ -337,14 +344,37 @@ public final class MobChallenge {
 		}
 		boolean running = ChallengeManager.get().isRunning();
 
-		// Nacheinander verwandeln
+		// Nacheinander verwandeln, jeweils mit 5-Sekunden-Countdown
 		if (running && !transformQueue.isEmpty() && --transformDelay <= 0) {
-			UUID next = transformQueue.poll();
+			UUID next = transformQueue.peek();
 			ServerPlayer player = server.getPlayerList().getPlayer(next);
-			if (player != null && kindOf(player) == null) {
-				transform(server, player, randomFreeKind());
+			if (player == null || kindOf(player) != null) {
+				transformQueue.poll();
+				countdown = -1;
+			} else {
+				if (countdown < 0) {
+					countdown = 5 * 20;
+				}
+				if (countdown % 20 == 0 && countdown > 0) {
+					Component number = Component.literal(String.valueOf(countdown / 20)).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+					Component sub = Component.literal(player.getName().getString() + " wird verwandelt …").withStyle(ChatFormatting.GRAY);
+					for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+						other.connection.send(new ClientboundSetTitlesAnimationPacket(0, 22, 0));
+						other.connection.send(new ClientboundSetSubtitleTextPacket(sub));
+						other.connection.send(new ClientboundSetTitleTextPacket(number));
+					}
+					playSound(player, "minecraft:block.note_block.hat", 1.0f);
+				}
+				if (countdown == 0) {
+					transformQueue.poll();
+					countdown = -1;
+					transform(server, player, randomFreeKind());
+					transformDelay = 40;
+				} else {
+					countdown--;
+					transformDelay = 0;
+				}
 			}
-			transformDelay = 60;
 		}
 
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -377,9 +407,74 @@ public final class MobChallenge {
 		if (tick % 5 == 0) {
 			tickRelations(server);
 		}
+		if (tick % 10 == 0) {
+			updateDimensions(server);
+		}
 		abilities.tick(server);
 		if (tick % 5 == 0) {
 			sendStates(server);
+		}
+	}
+
+	/** Hitbox-Maße des Mobs für jeden verwandelten Spieler (Server + alle Clients). */
+	private void updateDimensions(MinecraftServer server) {
+		boolean changed = false;
+		Set<UUID> online = new HashSet<>();
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			online.add(player.getUUID());
+			MobKind kind = kindOf(player);
+			float[] size = null;
+			if (kind == MobKind.MAGMA_CUBE) {
+				float edge = magmaSize(player) == 3 ? 2.08f : magmaSize(player) == 2 ? 1.04f : 0.52f;
+				size = new float[] {edge, edge};
+			} else if (kind != null) {
+				Identifier id = Identifier.withDefaultNamespace(kind.entityId);
+				if (BuiltInRegistries.ENTITY_TYPE.containsKey(id)) {
+					var dimensions = BuiltInRegistries.ENTITY_TYPE.getValue(id).getDimensions();
+					size = new float[] {dimensions.width(), dimensions.height()};
+				}
+			}
+			float[] old = MobFlags.dims.get(player.getUUID());
+			if (size == null ? old != null : (old == null || old[0] != size[0] || old[1] != size[1])) {
+				if (size == null) {
+					MobFlags.dims.remove(player.getUUID());
+				} else {
+					MobFlags.dims.put(player.getUUID(), size);
+				}
+				player.refreshDimensions();
+				changed = true;
+			}
+		}
+		if (MobFlags.dims.keySet().retainAll(online)) {
+			changed = true;
+		}
+		if (!changed && sentDims.size() == MobFlags.dims.size()) {
+			return;
+		}
+		sentDims.clear();
+		sentDims.putAll(MobFlags.dims);
+		List<String> ids = new ArrayList<>();
+		List<Float> widths = new ArrayList<>();
+		List<Float> heights = new ArrayList<>();
+		for (Map.Entry<UUID, float[]> entry : MobFlags.dims.entrySet()) {
+			ids.add(entry.getKey().toString());
+			widths.add(entry.getValue()[0]);
+			heights.add(entry.getValue()[1]);
+		}
+		DimsPayload payload = new DimsPayload(ids, widths, heights);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (ServerPlayNetworking.canSend(player, DimsPayload.TYPE)) {
+				ServerPlayNetworking.send(player, payload);
+			}
+		}
+	}
+
+	/** Schwung geben: auf dem Server setzen und dem Client direkt schicken (der rechnet die Bewegung). */
+	static void push(ServerPlayer player, double x, double y, double z) {
+		player.setDeltaMovement(x, y, z);
+		player.needsSync = true;
+		if (ServerPlayNetworking.canSend(player, MotionPayload.TYPE)) {
+			ServerPlayNetworking.send(player, new MotionPayload(x, y, z));
 		}
 	}
 
@@ -548,6 +643,18 @@ public final class MobChallenge {
 		String path = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
 		boolean isFood = stack.has(DataComponents.FOOD);
 		boolean allowed = allowedFood(kind, path);
+		if (kind == MobKind.PIG && !isFood && !MenuBook.isMenuBook(stack) && !stack.has(DataComponents.MAX_DAMAGE)) {
+			// Schwein frisst einfach alles
+			if (!player.getFoodData().needsFood()) {
+				return InteractionResult.PASS;
+			}
+			player.getFoodData().eat(2, 0.3f);
+			if (!player.isCreative()) {
+				stack.shrink(1);
+			}
+			playSound(serverPlayer, "minecraft:entity.pig.ambient", 1.0f);
+			return InteractionResult.SUCCESS;
+		}
 
 		if (isFood && !allowed) {
 			serverPlayer.connection.send(new ClientboundSetActionBarTextPacket(
@@ -697,8 +804,7 @@ public final class MobChallenge {
 					int size = magmaSize(player);
 					double push = size == 3 ? 0.55 : size == 2 ? 0.45 : 0.35;
 					double up = size == 3 ? 0.65 : size == 2 ? 0.55 : 0.42;
-					player.setDeltaMovement(x / length * push, up, z / length * push);
-					player.needsSync = true;
+					push(player, x / length * push, up, z / length * push);
 					moveCooldown.put(id, tick + 12);
 				}
 			}
@@ -710,8 +816,7 @@ public final class MobChallenge {
 				if (jump && !wasJump && player.onGround() && tick >= moveCooldown.getOrDefault(id, 0L)) {
 					var look = player.getLookAngle();
 					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
-					player.setDeltaMovement(look.x / length * 1.4, 0.4, look.z / length * 1.4);
-					player.needsSync = true;
+					push(player, look.x / length * 1.4, 0.4, look.z / length * 1.4);
 					playSound(player, "minecraft:entity.camel.dash", 1.0f);
 					moveCooldown.put(id, tick + 55);
 				}

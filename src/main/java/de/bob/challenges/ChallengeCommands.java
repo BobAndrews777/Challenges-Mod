@@ -25,6 +25,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionLevel;
 
+import de.bob.challenges.mobs.MenuBook;
 import de.bob.challenges.mobs.MobChallenge;
 import de.bob.challenges.mobs.MobKind;
 import de.bob.challenges.split.SplitManager;
@@ -49,6 +50,11 @@ public final class ChallengeCommands {
 				.requires(PermissionPredicates.require(ChallengesMod.id("admin"), PermissionLevel.GAMEMASTERS))
 				.executes(ChallengeCommands::openGui)
 				.then(Commands.literal("menu").executes(ChallengeCommands::openGui))
+				.then(Commands.literal("buch").executes(ctx -> {
+					ServerPlayer player = ctx.getSource().getPlayerOrException();
+					player.getInventory().placeItemBackInInventory(MenuBook.create(), net.minecraft.util.Prediction.SERVER_ONLY);
+					return 1;
+				}))
 				.then(Commands.literal("status").executes(ChallengeCommands::status))
 				.then(Commands.literal("reset")
 						.executes(ChallengeCommands::askReset)

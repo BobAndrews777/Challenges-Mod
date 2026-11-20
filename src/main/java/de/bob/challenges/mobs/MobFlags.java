@@ -8,6 +8,12 @@ public final class MobFlags {
 	/** Auf dem Client: welcher Mob der eigene Spieler ist (Anzeigename, leer = keiner) */
 	public static volatile String clientKind = "";
 
+	/** Spieler-UUID → Hitbox {Breite, Höhe} des Mobs (Server und Client) */
+	public static final java.util.Map<java.util.UUID, float[]> dims = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** Wird gesetzt, sobald der Hitbox-Mixin greift – dann ist keine Größen-Skalierung mehr nötig. */
+	public static volatile boolean dimsMixinWorks = false;
+
 	private MobFlags() {
 	}
 

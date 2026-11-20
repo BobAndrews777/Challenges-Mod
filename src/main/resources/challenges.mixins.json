@@ -11,7 +11,8 @@
 		"ResultSlotMixin",
 		"PlayerEdgeMixin",
 		"MobTargetMixin",
-		"LivingEntityLavaMixin"
+		"LivingEntityLavaMixin",
+		"PlayerDimensionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

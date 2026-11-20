@@ -34,7 +34,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootTable;
 
 /**
@@ -309,6 +315,16 @@ public final class ChallengeManager {
 		if (!(isBlock && settings.randomBlockDrops) && !(isMob && settings.randomMobDrops)) {
 			return;
 		}
+		// Blöcke, die ohne Behutsamkeit nichts droppen (Glas, Eis …), droppen trotzdem ihr Zufalls-Item
+		if (isBlock && drops.isEmpty()) {
+			Identifier blockId = Identifier.withDefaultNamespace(path.substring("blocks/".length()));
+			if (BuiltInRegistries.BLOCK.containsKey(blockId)) {
+				Item blockItem = BuiltInRegistries.BLOCK.getValue(blockId).asItem();
+				if (blockItem != Items.AIR) {
+					drops.add(new ItemStack(blockItem));
+				}
+			}
+		}
 		for (int i = 0; i < drops.size(); i++) {
 			ItemStack original = drops.get(i);
 			if (original.isEmpty()) {
@@ -322,6 +338,23 @@ public final class ChallengeManager {
 			stack.setCount(Math.max(1, Math.min(original.getCount(), stack.getMaxStackSize())));
 			drops.set(i, stack);
 		}
+	}
+
+	/**
+	 * Zufalls-Block-Drops: Auch ohne passendes Werkzeug (z. B. Stein mit der Hand) droppt der Block
+	 * sein Zufalls-Item. Vanilla würfelt dann gar keine Beute aus, darum hier von Hand.
+	 */
+	public void onBlockBroken(Level level, Player player, BlockPos pos, BlockState state) {
+		if (!settings.randomBlockDrops || player.isCreative() || !(level instanceof ServerLevel serverLevel)
+				|| player.hasCorrectToolForDrops(state)) {
+			return;
+		}
+		Item blockItem = state.getBlock().asItem();
+		Item replacement = dropMap.get(blockItem);
+		if (blockItem == Items.AIR || replacement == null) {
+			return;
+		}
+		Block.popResource(serverLevel, pos, new ItemStack(replacement));
 	}
 
 	// ------------------------------------------------------------------

@@ -17,6 +17,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
@@ -56,6 +57,8 @@ public final class MobAbilities {
 	private final Map<UUID, Laser> lasers = new HashMap<>();
 	/** Helfer-Typ (für Magma-Minis: "magma_2" / "magma_1") */
 	private final Map<UUID, String> minionKinds = new HashMap<>();
+	/** Geradeaus fliegende Shulker-Geschosse: {Level, Richtung, Ende} */
+	private final Map<UUID, Object[]> straightBullets = new HashMap<>();
 	private long tick = 0;
 
 	MobAbilities(MobChallenge challenge) {
@@ -167,7 +170,7 @@ public final class MobAbilities {
 			case SILVERFISH -> {
 				if (ability == 1 && summon(player, "silverfish", 1, 20)) {
 					MobChallenge.playSound(player, "minecraft:entity.silverfish.ambient", 1.0f);
-					startCooldown(player, 1, 10 * 20);
+					startCooldown(player, 1, 2 * 20);
 				}
 			}
 			case ARMADILLO -> {
@@ -182,8 +185,7 @@ public final class MobAbilities {
 				if (ability == 1) {
 					var look = player.getLookAngle();
 					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
-					player.setDeltaMovement(look.x / length * 1.6, 0.2, look.z / length * 1.6);
-					player.needsSync = true;
+					MobChallenge.push(player, look.x / length * 1.6, 0.25, look.z / length * 1.6);
 					goatDashUntil.put(player.getUUID(), tick + 12);
 					goatHit.put(player.getUUID(), new java.util.HashSet<>());
 					MobChallenge.playSound(player, "minecraft:entity.goat.long_jump", 1.0f);
@@ -250,6 +252,10 @@ public final class MobAbilities {
 		}
 		tickGoatDash(server);
 		tickLasers(server);
+		tickBullets();
+		if (tick % 10 == 0) {
+			tickFollow(server);
+		}
 		if (tick % 20 == 0) {
 			tickMinions(server);
 		}
@@ -285,38 +291,25 @@ public final class MobAbilities {
 		level.addFreshEntity(entity);
 	}
 
-	/** Zielendes Schwebe-Geschoss: verfolgt das angeschaute Ziel oder das nächste Monster. */
+	/** Schwebe-Geschoss: fliegt wie ein geworfener Schneeball schnell geradeaus in Blickrichtung. */
 	private void shulkerBullet(ServerPlayer player) {
-		LivingEntity target = lookTarget(player, 32);
-		if (target == null) {
-			target = nearestMonster(player, 16);
-		}
-		if (target == null) {
-			player.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Kein Ziel in der Nähe!").withStyle(ChatFormatting.GRAY)));
+		ServerLevel level = player.level();
+		Entity bullet = create(level, "shulker_bullet");
+		if (bullet == null) {
 			return;
 		}
-		ServerLevel level = player.level();
-		Entity probe = create(level, "shulker_bullet");
-		Entity bullet = null;
-		if (probe != null) {
-			try {
-				var constructor = probe.getClass().getConstructor(Level.class, LivingEntity.class, Entity.class,
-						net.minecraft.core.Direction.Axis.class);
-				bullet = (Entity) constructor.newInstance(level, player, target, net.minecraft.core.Direction.Axis.Y);
-			} catch (ReflectiveOperationException e) {
-				bullet = probe; // Notlösung: geradeaus
-				bullet.setPos(player.getX(), player.getEyeY(), player.getZ());
-				bullet.setDeltaMovement(player.getLookAngle().scale(0.8));
-				if (bullet instanceof Projectile projectile) {
-					projectile.setOwner(player);
-				}
-			}
+		Vec3 look = player.getLookAngle();
+		Vec3 start = player.getEyePosition().add(look.scale(1.0));
+		bullet.setPos(start.x, start.y, start.z);
+		bullet.setNoGravity(true);
+		bullet.setDeltaMovement(look.scale(1.6));
+		if (bullet instanceof Projectile projectile) {
+			projectile.setOwner(player);
 		}
-		if (bullet != null) {
-			level.addFreshEntity(bullet);
-			MobChallenge.playSound(player, "minecraft:entity.shulker.shoot", 1.0f);
-			startCooldown(player, 2, 2 * 20);
-		}
+		level.addFreshEntity(bullet);
+		straightBullets.put(bullet.getUUID(), new Object[] {level, look.scale(1.6), tick + 60});
+		MobChallenge.playSound(player, "minecraft:entity.shulker.shoot", 1.0f);
+		startCooldown(player, 2, 2 * 20);
 	}
 
 	/** Ziel, auf das der Spieler schaut (keine Mitspieler). */
@@ -544,7 +537,7 @@ public final class MobAbilities {
 		return true;
 	}
 
-	/** Helfer greifen nur Monster an, nie die Spieler. */
+	/** Helfer greifen nie Spieler an und räumen tote Helfer auf. */
 	private void tickMinions(MinecraftServer server) {
 		List<UUID> dead = new ArrayList<>();
 		for (Map.Entry<UUID, UUID> entry : minions.entrySet()) {
@@ -554,29 +547,17 @@ public final class MobAbilities {
 				dead.add(entry.getKey());
 				continue;
 			}
-			ServerPlayer owner = server.getPlayerList().getPlayer(entry.getValue());
 			LivingEntity target = mob.getTarget();
 			if (target instanceof Player || (target != null && minions.containsKey(target.getUUID()))) {
 				mob.setTarget(null);
 				target = null;
 			}
-			if (target == null && owner != null) {
-				AABB area = owner.getBoundingBox().inflate(16);
-				List<Mob> enemies = level.getEntitiesOfClass(Mob.class, area,
-						m -> m.isAlive() && m.getType().getCategory() == MobCategory.MONSTER && !minions.containsKey(m.getUUID()));
-				Mob closest = null;
-				for (Mob enemy : enemies) {
-					if (closest == null || enemy.distanceToSqr(owner) < closest.distanceToSqr(owner)) {
-						closest = enemy;
-					}
-				}
-				if (closest != null) {
-					mob.setTarget(closest);
-					try {
-						// Bienen und andere neutrale Mobs müssen „wütend“ sein, um anzugreifen
-						mob.getClass().getMethod("startPersistentAngerTimer").invoke(mob);
-					} catch (ReflectiveOperationException ignored) {
-					}
+			// Selbstständig: feindliche Mobs in der Nähe des Spielers angreifen (nie Mitspieler)
+			ServerPlayer owner = server.getPlayerList().getPlayer(entry.getValue());
+			if (target == null && owner != null && owner.level() == level) {
+				LivingEntity enemy = nearestMonster(owner, 16);
+				if (enemy != null) {
+					command(owner, enemy);
 				}
 			}
 		}
@@ -584,6 +565,78 @@ public final class MobAbilities {
 			minions.remove(id);
 			minionLevels.remove(id);
 			minionKinds.remove(id);
+		}
+	}
+
+	/** Wie Hunde: Helfer ohne Ziel laufen ihrem Spieler hinterher, zu weit weg = Teleport. */
+	private void tickFollow(MinecraftServer server) {
+		for (Map.Entry<UUID, UUID> entry : minions.entrySet()) {
+			ServerLevel level = minionLevels.get(entry.getKey());
+			Entity entity = level == null ? null : level.getEntity(entry.getKey());
+			ServerPlayer owner = server.getPlayerList().getPlayer(entry.getValue());
+			if (!(entity instanceof Mob mob) || owner == null || mob.getTarget() != null) {
+				continue;
+			}
+			if (owner.level() != level || mob.distanceToSqr(owner) > 24 * 24) {
+				if (owner.level() == level) {
+					mob.teleportTo(owner.getX() + 1, owner.getY(), owner.getZ() + 1);
+				}
+			} else if (mob.distanceToSqr(owner) > 4 * 4) {
+				mob.getNavigation().moveTo(owner, 1.2);
+			}
+		}
+	}
+
+	/**
+	 * Helfer greifen an, was ihr Spieler schlägt – und wer ihren Spieler angreift.
+	 * Aufgerufen aus AFTER_DAMAGE.
+	 */
+	public void onDamage(LivingEntity victim, DamageSource source) {
+		Entity attacker = source.getEntity();
+		if (attacker instanceof ServerPlayer owner && !(victim instanceof Player) && !minions.containsKey(victim.getUUID())) {
+			command(owner, victim);
+		}
+		if (victim instanceof ServerPlayer owner && attacker instanceof LivingEntity enemy && !(enemy instanceof Player)
+				&& !minions.containsKey(enemy.getUUID())) {
+			command(owner, enemy);
+		}
+	}
+
+	private void command(ServerPlayer owner, LivingEntity target) {
+		for (Map.Entry<UUID, UUID> entry : minions.entrySet()) {
+			if (!entry.getValue().equals(owner.getUUID())) {
+				continue;
+			}
+			ServerLevel level = minionLevels.get(entry.getKey());
+			Entity entity = level == null ? null : level.getEntity(entry.getKey());
+			if (entity instanceof Mob mob && mob.isAlive() && level == target.level()) {
+				mob.setTarget(target);
+				try {
+					// Bienen und andere neutrale Mobs müssen „wütend“ sein, um anzugreifen
+					mob.getClass().getMethod("startPersistentAngerTimer").invoke(mob);
+				} catch (ReflectiveOperationException ignored) {
+				}
+			}
+		}
+	}
+
+	private void tickBullets() {
+		if (straightBullets.isEmpty()) {
+			return;
+		}
+		Iterator<Map.Entry<UUID, Object[]>> it = straightBullets.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<UUID, Object[]> entry = it.next();
+			ServerLevel level = (ServerLevel) entry.getValue()[0];
+			Entity bullet = level.getEntity(entry.getKey());
+			if (bullet == null || !bullet.isAlive() || tick > (Long) entry.getValue()[2]) {
+				if (bullet != null && bullet.isAlive()) {
+					bullet.discard();
+				}
+				it.remove();
+				continue;
+			}
+			bullet.setDeltaMovement((Vec3) entry.getValue()[1]);
 		}
 	}
 
