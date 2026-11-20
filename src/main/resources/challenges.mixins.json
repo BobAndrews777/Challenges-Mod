@@ -12,7 +12,10 @@
 		"PlayerEdgeMixin",
 		"MobTargetMixin",
 		"LivingEntityLavaMixin",
-		"PlayerDimensionsMixin"
+		"PlayerDimensionsMixin",
+		"LavaCollisionMixin",
+		"ProjectileHitMixin",
+		"EntityBroadcastMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

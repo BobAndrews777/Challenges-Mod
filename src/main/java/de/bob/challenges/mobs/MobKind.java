@@ -26,7 +26,7 @@ public enum MobKind {
 	CAT("Katze", "cat", 5, 0.7, true, null,
 			Flags.NO_FALL, null, null),
 	CAMEL("Kamel", "camel", 16, 2.375, true, null,
-			0, null, null),
+			0, "Dash", null),
 	IRON_GOLEM("Eisengolem", "iron_golem", 50, 2.7, true, null,
 			Flags.NO_FALL | Flags.IRON_HEAL_ONLY, null, null),
 	CREEPER("Creeper", "creeper", 10, 1.7, true, Set.of("gunpowder"),

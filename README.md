@@ -14,7 +14,7 @@ Stack-Limit, Platzier-Reihenfolge) muss die Mod **auch bei allen Spielern** inst
 | Schaden | Schaden bei jedem Sprung (einstellbar), Tod beim Schleichen |
 | Force | Force Block, Force Mob, Force Item – mit einstellbarem Zeitlimit |
 | Welt | `/challenge reset` löscht die Welt und erstellt beim nächsten Start eine neue |
-| Mob-Challenge | Beim Timer-Start wird jeder nacheinander in einen zufälligen Mob verwandelt (Leben, Größe, Essen, Fallschaden, Fliegen, Schwächen, Fähigkeiten auf R/G). Alle 22 Mobs inkl. Reiten (Sattel), Esel-Kiste (Schleichen + Rechtsklick), Magma-Hüpfen und -Teilen, Lava-Laufen |
+| Mob-Challenge | Beim Timer-Start wird jeder nacheinander in einen zufälligen Mob verwandelt – vorher läuft 5 Sekunden ein Glücksrad mit den Mob-Namen. Leben, Größe/Hitbox, Essen, Fallschaden, Fliegen, Schwächen, Fähigkeiten auf R/G. Alle 22 Mobs inkl. Reiten (Sattel), Esel-Kiste (Schleichen + Rechtsklick), Magma-Hüpfen und -Teilen, Lava-Laufen (Schreiter/Magma Cube), Ziegen-Dash (R), Kamel-Dash (Leertaste/R). **Aussehen:** Die anderen sehen einen echten Mob statt des Spielers (Kostüm-Mob mit Namensschild, Treffer darauf gehen an den Spieler) |
 | Split-Challenge | 2–4 Spieler in Rot/Gelb/Blau/Grün, Übersicht oben rechts, Split im zufälligen Zeitfenster mit 5-Sekunden-Countdown, seltene Joker statt eines Splits, ein Tod = alle tot. Fertige Splits: alle 24 |
 
 ## Befehle (OP nötig)
@@ -59,3 +59,5 @@ Server starten, joinen, `/challenge` eingeben.
 - Nach `/challenge reset` stoppt der Server. Startet dein Hoster nicht automatisch neu, starte ihn einfach von Hand.
 - Einstellungen und Timer stehen in `config/challenges.json`.
 - Bukkit-/Spigot-/Paper-Plugins laufen grundsätzlich **nicht** auf einem Fabric-Server.
+- Mob-Challenge: Lava-Laufen, Dashes, Glücksrad und das Aussehen brauchen die Mod **bei allen Spielern in derselben Version** wie auf dem Server.
+- Das eigene Kostüm sieht man selbst nicht (auch nicht in F5), damit es nicht die Sicht versperrt.

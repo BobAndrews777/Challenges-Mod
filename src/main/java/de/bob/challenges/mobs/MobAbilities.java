@@ -183,13 +183,18 @@ public final class MobAbilities {
 			}
 			case GOAT -> {
 				if (ability == 1) {
-					var look = player.getLookAngle();
-					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
-					MobChallenge.push(player, look.x / length * 1.6, 0.25, look.z / length * 1.6);
-					goatDashUntil.put(player.getUUID(), tick + 12);
+					// Den Schwung rechnet der Client selbst (sofort, ohne Verzögerung) – hier nur Treffer und Abklingzeit
+					goatDashUntil.put(player.getUUID(), tick + 15);
 					goatHit.put(player.getUUID(), new java.util.HashSet<>());
 					MobChallenge.playSound(player, "minecraft:entity.goat.long_jump", 1.0f);
 					startCooldown(player, 1, 5 * 20);
+				}
+			}
+			case CAMEL -> {
+				if (ability == 1) {
+					// Schwung macht der Client (Leertaste oder R), hier nur Ton und Abklingzeit
+					MobChallenge.playSound(player, "minecraft:entity.camel.dash", 1.0f);
+					startCooldown(player, 1, 55);
 				}
 			}
 			case BEE -> {
@@ -324,7 +329,7 @@ public final class MobAbilities {
 		LivingEntity best = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (Entity entity : player.level().getEntities(player, area,
-				e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Player))) {
+				e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Player) && !challenge.disguises().isDisguise(e))) {
 			var hit = entity.getBoundingBox().inflate(0.3).clip(start, end);
 			if (hit.isPresent()) {
 				double distance = start.distanceToSqr(hit.get());
@@ -340,7 +345,8 @@ public final class MobAbilities {
 	private LivingEntity nearestMonster(ServerPlayer player, double range) {
 		Mob closest = null;
 		for (Mob mob : player.level().getEntitiesOfClass(Mob.class, player.getBoundingBox().inflate(range),
-				m -> m.isAlive() && m.getType().getCategory() == MobCategory.MONSTER && !minions.containsKey(m.getUUID()))) {
+				m -> m.isAlive() && m.getType().getCategory() == MobCategory.MONSTER && !minions.containsKey(m.getUUID())
+						&& !challenge.disguises().isDisguise(m))) {
 			if (closest == null || mob.distanceToSqr(player) < closest.distanceToSqr(player)) {
 				closest = mob;
 			}
@@ -382,7 +388,7 @@ public final class MobAbilities {
 			}
 			Set<UUID> hit = goatHit.computeIfAbsent(entry.getKey(), k -> new java.util.HashSet<>());
 			for (Entity entity : player.level().getEntities(player, player.getBoundingBox().inflate(0.6),
-					e -> e instanceof LivingEntity && e.isAlive())) {
+					e -> e instanceof LivingEntity && e.isAlive() && !challenge.disguises().isDisguise(e))) {
 				if (hit.add(entity.getUUID())) {
 					LivingEntity living = (LivingEntity) entity;
 					var source = player.level().damageSources().playerAttack(player);

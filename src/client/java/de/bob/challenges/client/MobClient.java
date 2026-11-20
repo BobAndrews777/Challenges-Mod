@@ -30,6 +30,14 @@ import de.bob.challenges.mobs.MobKind;
 import de.bob.challenges.mobs.MotionPayload;
 import de.bob.challenges.mobs.MobFlags;
 import de.bob.challenges.mobs.MobStatePayload;
+import de.bob.challenges.mobs.ReelPayload;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundSource;
 
 /**
  * Client-Teil der Mob-Challenge: zwei Fähigkeits-Tasten (Standard R und G, in den
@@ -39,6 +47,15 @@ public final class MobClient {
 	private static KeyMapping ability1;
 	private static KeyMapping ability2;
 	private static volatile MobStatePayload state = new MobStatePayload("", "", 0, "", 0);
+	private static long clientTicks;
+	private static long dashReadyAt;
+	private static boolean wasJump;
+	private static volatile Reel reel;
+	private static int lastReelIndex = -1;
+
+	/** Glücksrad-Walze: Namen laufen von oben nach unten durch und bleiben auf dem ausgelosten Mob stehen. */
+	private record Reel(String player, String kind, long start, long spinMs, long totalMs, List<String> strip, int target) {
+	}
 
 	private MobClient() {
 	}
@@ -51,14 +68,25 @@ public final class MobClient {
 				InputConstants.Type.KEYBOARD, SDLScancode.SDL_SCANCODE_G, category));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			clientTicks++;
 			while (ability1.consumeClick()) {
-				send(1);
+				if (!localDash(client, false)) {
+					send(1);
+				}
 			}
 			while (ability2.consumeClick()) {
 				send(2);
 			}
+			// Kamel: Leertaste = Dash
+			boolean jump = client.player != null && client.screen == null && client.options.keyJump.isDown();
+			if (jump && !wasJump) {
+				localDash(client, true);
+			}
+			wasJump = jump;
 			tickLavaWalking(client);
 		});
+
+		ClientPlayNetworking.registerGlobalReceiver(ReelPayload.TYPE, (payload, context) -> startReel(payload));
 
 		// Dash / Hüpfer vom Server direkt auf den eigenen Spieler anwenden
 		ClientPlayNetworking.registerGlobalReceiver(MotionPayload.TYPE, (payload, context) -> {
@@ -96,6 +124,7 @@ public final class MobClient {
 			MobFlags.dims.clear();
 		});
 		HudElementRegistry.addLast(ChallengesMod.id("mob_state"), MobClient::extract);
+		HudElementRegistry.addLast(ChallengesMod.id("mob_reel"), MobClient::extractReel);
 	}
 
 	/**
@@ -109,20 +138,126 @@ public final class MobClient {
 				|| !(kind.equals(MobKind.STRIDER.displayName) || kind.equals(MobKind.MAGMA_CUBE.displayName))) {
 			return;
 		}
-		Vec3 motion = player.getDeltaMovement();
+		// Steckt man drin, wird man nach oben gedrückt – auf der Oberfläche trägt einen dann die Lava selbst
 		if (player.isInLava()) {
-			player.setDeltaMovement(motion.x, Math.max(motion.y, 0.22), motion.z);
+			Vec3 motion = player.getDeltaMovement();
+			player.setDeltaMovement(motion.x, Math.max(motion.y, 0.25), motion.z);
+		}
+	}
+
+	/**
+	 * Ziege (R) und Kamel (R oder Leertaste): Der Schwung wird direkt hier auf dem Client gegeben –
+	 * sofort und ohne Umweg über den Server. Der Server kümmert sich um Treffer, Ton und Abklingzeit.
+	 * @return true, wenn die Taste damit erledigt ist
+	 */
+	private static boolean localDash(Minecraft client, boolean jumpKey) {
+		LocalPlayer player = client.player;
+		String kind = MobFlags.clientKind;
+		boolean goat = kind.equals(MobKind.GOAT.displayName);
+		boolean camel = kind.equals(MobKind.CAMEL.displayName);
+		if (player == null || player.isPassenger() || !(goat || camel) || (jumpKey && !camel)) {
+			return false;
+		}
+		if (state.cooldown1() > 0 || clientTicks < dashReadyAt || (camel && !player.onGround())) {
+			// Ziege: an den Server weiterreichen (zeigt die Abklingzeit an); Kamel: Taste einfach ignorieren
+			return camel;
+		}
+		Vec3 look = player.getLookAngle();
+		double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
+		double speed = goat ? 1.6 : 1.5;
+		double up = goat ? 0.3 : 0.42;
+		player.setDeltaMovement(look.x / length * speed, up, look.z / length * speed);
+		dashReadyAt = clientTicks + (goat ? 100 : 55);
+		send(1);
+		return true;
+	}
+
+	private static void startReel(ReelPayload payload) {
+		List<String> names = new ArrayList<>();
+		for (MobKind kind : MobKind.values()) {
+			if (kind.ready) {
+				names.add(kind.displayName);
+			}
+		}
+		Random random = new Random();
+		int target = 28;
+		List<String> strip = new ArrayList<>();
+		String previous = "";
+		for (int i = 0; i < target + 3; i++) {
+			String name;
+			if (i == target) {
+				name = payload.kind();
+			} else {
+				do {
+					name = names.get(random.nextInt(names.size()));
+				} while (names.size() > 2 && (name.equals(previous) || (i == target - 1 || i == target + 1) && name.equals(payload.kind())));
+			}
+			strip.add(name);
+			previous = name;
+		}
+		long total = Math.max(1500, payload.ticks() * 50L);
+		reel = new Reel(payload.player(), payload.kind(), System.currentTimeMillis(), total - 1000, total, strip, target);
+		lastReelIndex = -1;
+	}
+
+	private static void extractReel(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
+		Reel current = reel;
+		if (current == null) {
 			return;
 		}
-		BlockPos below = BlockPos.containing(player.getX(), player.getY() - 0.2, player.getZ());
-		boolean lavaBelow = BuiltInRegistries.FLUID.getKey(client.level.getFluidState(below).getType()).getPath().contains("lava");
-		double top = below.getY() + 1.0;
-		if (lavaBelow && motion.y <= 0 && player.getY() - top < 0.25) {
-			player.setPos(player.getX(), top, player.getZ());
-			player.setDeltaMovement(motion.x, 0, motion.z);
-			player.setOnGround(true);
-			player.fallDistance = 0;
+		long elapsed = System.currentTimeMillis() - current.start();
+		if (elapsed > current.totalMs()) {
+			reel = null;
+			return;
 		}
+		Minecraft minecraft = Minecraft.getInstance();
+		double t = Math.min(1.0, elapsed / (double) current.spinMs());
+		double eased = 1.0 - Math.pow(1.0 - t, 4);
+		double position = eased * current.target();
+		boolean done = t >= 1.0;
+
+		int index = (int) Math.round(position);
+		if (index != lastReelIndex) {
+			lastReelIndex = index;
+			playLocal(minecraft, done ? "entity.player.levelup" : "block.note_block.hat", done ? 1.2f : 1.6f);
+		}
+
+		int row = 14;
+		int cx = graphics.guiWidth() / 2;
+		int cy = graphics.guiHeight() / 2 - 62;
+		int half = 75;
+		// Rahmen und Hintergrund
+		graphics.fill(cx - half - 2, cy - 23, cx + half + 2, cy + 23, 0xFF5A3A12);
+		graphics.fill(cx - half, cy - 21, cx + half, cy + 21, 0xE0101010);
+		graphics.fill(cx - half, cy - 8, cx + half, cy + 8, done ? 0x60FFAA00 : 0x30FFFFFF);
+		graphics.fill(cx - half, cy - 8, cx + half, cy - 7, 0xFFFFAA00);
+		graphics.fill(cx - half, cy + 7, cx + half, cy + 8, 0xFFFFAA00);
+
+		String header = current.player() + " wird zu …";
+		graphics.text(minecraft.font, header, cx - minecraft.font.width(header) / 2, cy - 35, 0xFFFFFFFF);
+
+		int first = (int) Math.floor(position) - 2;
+		for (int i = Math.max(0, first); i <= first + 4 && i < current.strip().size(); i++) {
+			double offset = position - i;   // > 0: unterhalb der Mitte, < 0: oberhalb – wandert nach unten
+			if (Math.abs(offset) > 1.3) {
+				continue;
+			}
+			String name = current.strip().get(i);
+			int y = (int) Math.round(cy + offset * row) - 4;
+			int alpha = (int) Math.round(255 * Math.max(0.25, 1.0 - Math.abs(offset) / 1.6));
+			int rgb = done && i == current.target() ? 0xFFAA00 : 0xFFFFFF;
+			graphics.text(minecraft.font, name, cx - minecraft.font.width(name) / 2, y, (alpha << 24) | rgb);
+		}
+	}
+
+	private static void playLocal(Minecraft minecraft, String sound, float pitch) {
+		LocalPlayer player = minecraft.player;
+		Identifier id = Identifier.withDefaultNamespace(sound);
+		if (player == null || minecraft.level == null || !BuiltInRegistries.SOUND_EVENT.containsKey(id)) {
+			return;
+		}
+		minecraft.level.playLocalSound(player.getX(), player.getY(), player.getZ(), BuiltInRegistries.SOUND_EVENT.getValue(id),
+				SoundSource.MASTER, 0.6f, pitch, false);
 	}
 
 	private static void send(int ability) {

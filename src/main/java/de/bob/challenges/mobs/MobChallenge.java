@@ -56,9 +56,11 @@ public final class MobChallenge {
 	private static final MobChallenge INSTANCE = new MobChallenge();
 
 	private final MobAbilities abilities = new MobAbilities(this);
+	private final Disguises disguises = new Disguises(this);
 	private final ArrayDeque<UUID> transformQueue = new ArrayDeque<>();
 	private int transformDelay = 0;
 	private int countdown = -1;
+	private MobKind pendingKind;
 	private final Map<UUID, float[]> sentDims = new HashMap<>();
 	/** Spieler, deren Werte wir verändert haben (zum Zurücksetzen) */
 	private final Set<UUID> touched = new HashSet<>();
@@ -77,6 +79,10 @@ public final class MobChallenge {
 	private long tick = 0;
 
 	private MobChallenge() {
+	}
+
+	public Disguises disguises() {
+		return disguises;
 	}
 
 	public static MobChallenge get() {
@@ -182,12 +188,14 @@ public final class MobChallenge {
 		s().mobAssignments.clear();
 		transformQueue.clear();
 		countdown = -1;
+		pendingKind = null;
 		golemHealth.clear();
 		magmaSize.clear();
 		saddled.clear();
 		blazeStamina.clear();
 		abilities.reset();
 		if (server != null) {
+			disguises.removeAll(server);
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 				if (touched.contains(player.getUUID())) {
 					restore(player);
@@ -351,24 +359,27 @@ public final class MobChallenge {
 			if (player == null || kindOf(player) != null) {
 				transformQueue.poll();
 				countdown = -1;
+				pendingKind = null;
 			} else {
 				if (countdown < 0) {
 					countdown = 5 * 20;
-				}
-				if (countdown % 20 == 0 && countdown > 0) {
-					Component number = Component.literal(String.valueOf(countdown / 20)).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
-					Component sub = Component.literal(player.getName().getString() + " wird verwandelt …").withStyle(ChatFormatting.GRAY);
+					// Mob schon jetzt auslosen – die Clients lassen dazu die Glücksrad-Walze laufen
+					pendingKind = randomFreeKind();
+					ReelPayload reel = new ReelPayload(player.getName().getString(), pendingKind.displayName, countdown);
 					for (ServerPlayer other : server.getPlayerList().getPlayers()) {
-						other.connection.send(new ClientboundSetTitlesAnimationPacket(0, 22, 0));
-						other.connection.send(new ClientboundSetSubtitleTextPacket(sub));
-						other.connection.send(new ClientboundSetTitleTextPacket(number));
+						if (ServerPlayNetworking.canSend(other, ReelPayload.TYPE)) {
+							ServerPlayNetworking.send(other, reel);
+						} else {
+							other.connection.send(new ClientboundSetActionBarTextPacket(Component.literal(
+									player.getName().getString() + " wird verwandelt …").withStyle(ChatFormatting.GRAY)));
+						}
 					}
-					playSound(player, "minecraft:block.note_block.hat", 1.0f);
 				}
 				if (countdown == 0) {
 					transformQueue.poll();
 					countdown = -1;
-					transform(server, player, randomFreeKind());
+					transform(server, player, pendingKind != null ? pendingKind : randomFreeKind());
+					pendingKind = null;
 					transformDelay = 40;
 				} else {
 					countdown--;
@@ -411,6 +422,7 @@ public final class MobChallenge {
 			updateDimensions(server);
 		}
 		abilities.tick(server);
+		disguises.tick(server);
 		if (tick % 5 == 0) {
 			sendStates(server);
 		}
@@ -504,6 +516,14 @@ public final class MobChallenge {
 	 * Esel-Kiste öffnen (schleichen + Rechtsklick).
 	 */
 	public InteractionResult onUseEntity(Player player, InteractionHand hand, Entity target) {
+		if (disguises.isDisguise(target)) {
+			// Rechtsklick aufs Kostüm = Rechtsklick auf den Spieler darin
+			ServerPlayer owner = disguises.ownerOf(target, player.level().getServer());
+			if (owner == null || owner == player) {
+				return InteractionResult.FAIL;
+			}
+			target = owner;
+		}
 		if (!(player instanceof ServerPlayer user) || !(target instanceof ServerPlayer mobPlayer) || hand != InteractionHand.MAIN_HAND) {
 			return InteractionResult.PASS;
 		}
@@ -684,7 +704,10 @@ public final class MobChallenge {
 	// ------------------------------------------------------------------
 
 	/** Aus ALLOW_DAMAGE: eigene Explosion schadet dem Creeper nicht, Golem-Heilung merken. */
-	public boolean allowDamage(LivingEntity entity, DamageSource source) {
+	public boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
+		if (disguises.isDisguise(entity)) {
+			return disguises.allowDamage(entity, source, amount);
+		}
 		if (!(entity instanceof ServerPlayer player)) {
 			return true;
 		}
@@ -704,6 +727,9 @@ public final class MobChallenge {
 
 	/** Magma Cube teilt sich bei tödlichem Schaden in die nächstkleinere Stufe. */
 	public boolean allowDeath(LivingEntity entity) {
+		if (disguises.isDisguise(entity)) {
+			return false;
+		}
 		if (!(entity instanceof ServerPlayer player) || kindOf(player) != MobKind.MAGMA_CUBE) {
 			return true;
 		}
@@ -734,6 +760,9 @@ public final class MobChallenge {
 
 	/** Darf dieser Mob den Spieler als Ziel nehmen? (aus dem Mob-Mixin und für den Schaden) */
 	public boolean mayTarget(Mob mob, LivingEntity target) {
+		if (disguises.isDisguise(target) || disguises.isDisguise(mob)) {
+			return false;
+		}
 		if (!(target instanceof ServerPlayer player)) {
 			return true;
 		}
@@ -758,6 +787,9 @@ public final class MobChallenge {
 			}
 			AABB area = player.getBoundingBox().inflate(24);
 			for (Mob mob : player.level().getEntitiesOfClass(Mob.class, area, Mob::isAlive)) {
+				if (disguises.isDisguise(mob)) {
+					continue;
+				}
 				String type = typeOf(mob);
 				if (mob.getTarget() == player && !mayTarget(mob, player)) {
 					mob.setTarget(null);
@@ -806,19 +838,6 @@ public final class MobChallenge {
 					double up = size == 3 ? 0.65 : size == 2 ? 0.55 : 0.42;
 					push(player, x / length * push, up, z / length * push);
 					moveCooldown.put(id, tick + 12);
-				}
-			}
-			case CAMEL -> {
-				// Leertaste = Dash nach vorne (Abklingzeit wie beim echten Kamel)
-				boolean jump = input.jump();
-				boolean wasJump = lastJumpInput.getOrDefault(id, false);
-				lastJumpInput.put(id, jump);
-				if (jump && !wasJump && player.onGround() && tick >= moveCooldown.getOrDefault(id, 0L)) {
-					var look = player.getLookAngle();
-					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
-					push(player, look.x / length * 1.4, 0.4, look.z / length * 1.4);
-					playSound(player, "minecraft:entity.camel.dash", 1.0f);
-					moveCooldown.put(id, tick + 55);
 				}
 			}
 			case BLAZE -> {

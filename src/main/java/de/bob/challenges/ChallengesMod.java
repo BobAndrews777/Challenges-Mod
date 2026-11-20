@@ -53,7 +53,10 @@ public final class ChallengesMod implements ModInitializer {
 		ChallengeCommands.register();
 
 		ServerLifecycleEvents.SERVER_STARTED.register(manager::onServerStarted);
-		ServerLifecycleEvents.SERVER_STOPPING.register(server -> manager.onServerStopping());
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			MobChallenge.get().disguises().removeAll(server);
+			manager.onServerStopping();
+		});
 		ServerTickEvents.END_SERVER_TICK.register(manager::tick);
 
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> manager.allowPlayerDamage(entity));
@@ -113,6 +116,7 @@ public final class ChallengesMod implements ModInitializer {
 		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> split.checkHandUse(player));
 		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.checkHandUse(player));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.onEntityLoad(entity));
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> MobChallenge.get().disguises().onEntityLoad(entity));
 
 		// Mob-Challenge
 		MobChallenge mobs = MobChallenge.get();
@@ -125,12 +129,13 @@ public final class ChallengesMod implements ModInitializer {
 		UseItemCallback.EVENT.register((player, level, hand) -> MenuBook.onUse(player, hand));
 		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
 		PayloadTypeRegistry.clientboundPlay().register(MotionPayload.TYPE, MotionPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.ReelPayload.TYPE, de.bob.challenges.mobs.ReelPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(DimsPayload.TYPE, DimsPayload.CODEC);
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) ->
 				mobs.abilities().onDamage(entity, source));
 		ServerPlayerEvents.JOIN.register(MenuBook::giveIfMissing);
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
-		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source));
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source, amount));
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));
 		ServerPlayerEvents.JOIN.register(player -> {
 			if (player.level().getServer() != null) {
