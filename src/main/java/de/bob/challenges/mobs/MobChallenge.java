@@ -698,7 +698,7 @@ public final class MobChallenge {
 					double push = size == 3 ? 0.55 : size == 2 ? 0.45 : 0.35;
 					double up = size == 3 ? 0.65 : size == 2 ? 0.55 : 0.42;
 					player.setDeltaMovement(x / length * push, up, z / length * push);
-					player.hurtMarked = true;
+					player.needsSync = true;
 					moveCooldown.put(id, tick + 12);
 				}
 			}
@@ -711,7 +711,7 @@ public final class MobChallenge {
 					var look = player.getLookAngle();
 					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
 					player.setDeltaMovement(look.x / length * 1.4, 0.4, look.z / length * 1.4);
-					player.hurtMarked = true;
+					player.needsSync = true;
 					playSound(player, "minecraft:entity.camel.dash", 1.0f);
 					moveCooldown.put(id, tick + 55);
 				}

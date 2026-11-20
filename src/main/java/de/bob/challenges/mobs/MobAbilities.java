@@ -183,7 +183,7 @@ public final class MobAbilities {
 					var look = player.getLookAngle();
 					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
 					player.setDeltaMovement(look.x / length * 1.6, 0.2, look.z / length * 1.6);
-					player.hurtMarked = true;
+					player.needsSync = true;
 					goatDashUntil.put(player.getUUID(), tick + 12);
 					goatHit.put(player.getUUID(), new java.util.HashSet<>());
 					MobChallenge.playSound(player, "minecraft:entity.goat.long_jump", 1.0f);
@@ -368,8 +368,9 @@ public final class MobAbilities {
 		}
 		MobChallenge.playSound(player, "minecraft:entity.warden.sonic_boom", 1.0f);
 		if (target != null) {
-			target.hurtServer(level, level.damageSources().sonicBoom(player), 10.0f);
-			target.knockback(2.5, -look.x, -look.z);
+			var source = level.damageSources().sonicBoom(player);
+			target.hurtServer(level, source, 10.0f);
+			target.knockback(2.5, -look.x, -look.z, source, 10.0f);
 		}
 	}
 
@@ -391,9 +392,10 @@ public final class MobAbilities {
 					e -> e instanceof LivingEntity && e.isAlive())) {
 				if (hit.add(entity.getUUID())) {
 					LivingEntity living = (LivingEntity) entity;
-					living.hurtServer(player.level(), player.level().damageSources().playerAttack(player), 6.0f);
+					var source = player.level().damageSources().playerAttack(player);
+					living.hurtServer(player.level(), source, 6.0f);
 					Vec3 look = player.getLookAngle();
-					living.knockback(2.0, -look.x, -look.z);
+					living.knockback(2.0, -look.x, -look.z, source, 6.0f);
 					MobChallenge.playSound(player, "minecraft:entity.goat.ram_impact", 1.0f);
 				}
 			}
