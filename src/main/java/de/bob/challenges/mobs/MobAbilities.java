@@ -47,6 +47,15 @@ public final class MobAbilities {
 	private final Map<UUID, Long> rolledUntil = new HashMap<>();
 	/** Blaze: noch abzufeuernde Feuerbälle der Salve */
 	private final Map<UUID, Integer> blazeBurst = new HashMap<>();
+	/** Ziege: Dash läuft bis Tick, schon getroffene Ziele */
+	private final Map<UUID, Long> goatDashUntil = new HashMap<>();
+	private final Map<UUID, Set<UUID>> goatHit = new HashMap<>();
+	/** Elder Guardian: laufende Laser (Spieler → Ziel, Ende) */
+	private record Laser(UUID target, ServerLevel level, long fireAt) {
+	}
+	private final Map<UUID, Laser> lasers = new HashMap<>();
+	/** Helfer-Typ (für Magma-Minis: "magma_2" / "magma_1") */
+	private final Map<UUID, String> minionKinds = new HashMap<>();
 	private long tick = 0;
 
 	MobAbilities(MobChallenge challenge) {
@@ -57,6 +66,9 @@ public final class MobAbilities {
 		readyAt.clear();
 		rolledUntil.clear();
 		blazeBurst.clear();
+		goatDashUntil.clear();
+		goatHit.clear();
+		lasers.clear();
 	}
 
 	public int cooldown(ServerPlayer player, int ability) {
@@ -166,8 +178,54 @@ public final class MobAbilities {
 					startCooldown(player, 1, 8 * 20);
 				}
 			}
-			default -> player.connection.send(new ClientboundSetActionBarTextPacket(
-					Component.literal("Diese Fähigkeit kommt in Etappe 2!").withStyle(ChatFormatting.GRAY)));
+			case GOAT -> {
+				if (ability == 1) {
+					var look = player.getLookAngle();
+					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
+					player.setDeltaMovement(look.x / length * 1.6, 0.2, look.z / length * 1.6);
+					player.hurtMarked = true;
+					goatDashUntil.put(player.getUUID(), tick + 12);
+					goatHit.put(player.getUUID(), new java.util.HashSet<>());
+					MobChallenge.playSound(player, "minecraft:entity.goat.long_jump", 1.0f);
+					startCooldown(player, 1, 5 * 20);
+				}
+			}
+			case BEE -> {
+				if (ability == 1 && summon(player, "bee", 10, 10)) {
+					MobChallenge.playSound(player, "minecraft:entity.bee.loop_aggressive", 1.0f);
+					startCooldown(player, 1, 30 * 20);
+				}
+			}
+			case WARDEN -> {
+				if (ability == 1) {
+					sonicBoom(player);
+					startCooldown(player, 1, 40);
+				}
+			}
+			case ELDER_GUARDIAN -> {
+				if (ability == 1) {
+					LivingEntity target = lookTarget(player, 16);
+					if (target == null) {
+						player.connection.send(new ClientboundSetActionBarTextPacket(
+								Component.literal("Schau ein Ziel an!").withStyle(ChatFormatting.GRAY)));
+					} else {
+						lasers.put(player.getUUID(), new Laser(target.getUUID(), player.level(), tick + 40));
+						MobChallenge.playSound(player, "minecraft:entity.elder_guardian.curse", 1.0f);
+						startCooldown(player, 1, 80);
+					}
+				}
+			}
+			case MAGMA_CUBE -> {
+				if (ability == 1) {
+					summonMagma(player);
+				}
+			}
+			default -> {
+				if ((ability == 1 ? kind.ability1 : kind.ability2) != null) {
+					player.connection.send(new ClientboundSetActionBarTextPacket(
+							Component.literal("Diese Fähigkeit kommt mit dem Aussehen (Etappe 3)!").withStyle(ChatFormatting.GRAY)));
+				}
+			}
 		}
 	}
 
@@ -190,6 +248,8 @@ public final class MobAbilities {
 				}
 			}
 		}
+		tickGoatDash(server);
+		tickLasers(server);
 		if (tick % 20 == 0) {
 			tickMinions(server);
 		}
@@ -225,11 +285,192 @@ public final class MobAbilities {
 		level.addFreshEntity(entity);
 	}
 
+	/** Zielendes Schwebe-Geschoss: verfolgt das angeschaute Ziel oder das nächste Monster. */
 	private void shulkerBullet(ServerPlayer player) {
-		// Zielendes Schwebe-Geschoss folgt in Etappe 2 – bis dahin fliegt es geradeaus
-		shoot(player, "shulker_bullet", 0.8);
-		MobChallenge.playSound(player, "minecraft:entity.shulker.shoot", 1.0f);
-		startCooldown(player, 2, 2 * 20);
+		LivingEntity target = lookTarget(player, 32);
+		if (target == null) {
+			target = nearestMonster(player, 16);
+		}
+		if (target == null) {
+			player.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Kein Ziel in der Nähe!").withStyle(ChatFormatting.GRAY)));
+			return;
+		}
+		ServerLevel level = player.level();
+		Entity probe = create(level, "shulker_bullet");
+		Entity bullet = null;
+		if (probe != null) {
+			try {
+				var constructor = probe.getClass().getConstructor(Level.class, LivingEntity.class, Entity.class,
+						net.minecraft.core.Direction.Axis.class);
+				bullet = (Entity) constructor.newInstance(level, player, target, net.minecraft.core.Direction.Axis.Y);
+			} catch (ReflectiveOperationException e) {
+				bullet = probe; // Notlösung: geradeaus
+				bullet.setPos(player.getX(), player.getEyeY(), player.getZ());
+				bullet.setDeltaMovement(player.getLookAngle().scale(0.8));
+				if (bullet instanceof Projectile projectile) {
+					projectile.setOwner(player);
+				}
+			}
+		}
+		if (bullet != null) {
+			level.addFreshEntity(bullet);
+			MobChallenge.playSound(player, "minecraft:entity.shulker.shoot", 1.0f);
+			startCooldown(player, 2, 2 * 20);
+		}
+	}
+
+	/** Ziel, auf das der Spieler schaut (keine Mitspieler). */
+	static LivingEntity lookTarget(ServerPlayer player, double range) {
+		Vec3 start = player.getEyePosition();
+		Vec3 end = start.add(player.getLookAngle().scale(range));
+		HitResult block = player.pick(range, 0.0f, false);
+		if (block.getType() == HitResult.Type.BLOCK) {
+			end = block.getLocation();
+		}
+		AABB area = player.getBoundingBox().expandTowards(player.getLookAngle().scale(range)).inflate(1.0);
+		LivingEntity best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Entity entity : player.level().getEntities(player, area,
+				e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Player))) {
+			var hit = entity.getBoundingBox().inflate(0.3).clip(start, end);
+			if (hit.isPresent()) {
+				double distance = start.distanceToSqr(hit.get());
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					best = (LivingEntity) entity;
+				}
+			}
+		}
+		return best;
+	}
+
+	private LivingEntity nearestMonster(ServerPlayer player, double range) {
+		Mob closest = null;
+		for (Mob mob : player.level().getEntitiesOfClass(Mob.class, player.getBoundingBox().inflate(range),
+				m -> m.isAlive() && m.getType().getCategory() == MobCategory.MONSTER && !minions.containsKey(m.getUUID()))) {
+			if (closest == null || mob.distanceToSqr(player) < closest.distanceToSqr(player)) {
+				closest = mob;
+			}
+		}
+		return closest;
+	}
+
+	/** Warden: Sonic Boom – trifft das erste Ziel in Blickrichtung, geht durch Rüstung. */
+	private void sonicBoom(ServerPlayer player) {
+		ServerLevel level = player.level();
+		Vec3 start = player.getEyePosition();
+		Vec3 look = player.getLookAngle();
+		LivingEntity target = lookTarget(player, 20);
+		double length = target == null ? 15 : Math.sqrt(start.distanceToSqr(target.getEyePosition()));
+		for (double d = 1; d <= length; d += 1.0) {
+			Vec3 pos = start.add(look.scale(d));
+			level.sendParticles(net.minecraft.core.particles.ParticleTypes.SONIC_BOOM, pos.x, pos.y, pos.z, 1, 0, 0, 0, 0);
+		}
+		MobChallenge.playSound(player, "minecraft:entity.warden.sonic_boom", 1.0f);
+		if (target != null) {
+			target.hurtServer(level, level.damageSources().sonicBoom(player), 10.0f);
+			target.knockback(2.5, -look.x, -look.z);
+		}
+	}
+
+	private void tickGoatDash(MinecraftServer server) {
+		if (goatDashUntil.isEmpty()) {
+			return;
+		}
+		Iterator<Map.Entry<UUID, Long>> it = goatDashUntil.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<UUID, Long> entry = it.next();
+			ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+			if (player == null || entry.getValue() < tick) {
+				it.remove();
+				goatHit.remove(entry.getKey());
+				continue;
+			}
+			Set<UUID> hit = goatHit.computeIfAbsent(entry.getKey(), k -> new java.util.HashSet<>());
+			for (Entity entity : player.level().getEntities(player, player.getBoundingBox().inflate(0.6),
+					e -> e instanceof LivingEntity && e.isAlive())) {
+				if (hit.add(entity.getUUID())) {
+					LivingEntity living = (LivingEntity) entity;
+					living.hurtServer(player.level(), player.level().damageSources().playerAttack(player), 6.0f);
+					Vec3 look = player.getLookAngle();
+					living.knockback(2.0, -look.x, -look.z);
+					MobChallenge.playSound(player, "minecraft:entity.goat.ram_impact", 1.0f);
+				}
+			}
+		}
+	}
+
+	private void tickLasers(MinecraftServer server) {
+		if (lasers.isEmpty()) {
+			return;
+		}
+		Iterator<Map.Entry<UUID, Laser>> it = lasers.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<UUID, Laser> entry = it.next();
+			ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+			Laser laser = entry.getValue();
+			Entity targetEntity = laser.level().getEntity(laser.target());
+			if (player == null || !(targetEntity instanceof LivingEntity target) || !target.isAlive()
+					|| target.distanceToSqr(player) > 20 * 20) {
+				it.remove();
+				continue;
+			}
+			if (tick % 2 == 0) {
+				Vec3 from = player.getEyePosition();
+				Vec3 to = target.getEyePosition();
+				Vec3 step = to.subtract(from);
+				double length = step.length();
+				for (double d = 0; d < length; d += 0.5) {
+					Vec3 pos = from.add(step.scale(d / length));
+					laser.level().sendParticles(net.minecraft.core.particles.ParticleTypes.END_ROD, pos.x, pos.y, pos.z, 1, 0, 0, 0, 0);
+				}
+			}
+			if (tick >= laser.fireAt()) {
+				target.hurtServer(laser.level(), laser.level().damageSources().indirectMagic(player, player), 8.0f);
+				MobChallenge.playSound(player, "minecraft:entity.guardian.attack", 1.0f);
+				it.remove();
+			}
+		}
+	}
+
+	/** Magma Cube: Minis rufen – höchstens 4 mittlere und 8 kleine. */
+	private void summonMagma(ServerPlayer player) {
+		int medium = 0;
+		int small = 0;
+		for (Map.Entry<UUID, UUID> entry : minions.entrySet()) {
+			if (entry.getValue().equals(player.getUUID())) {
+				String kind = minionKinds.get(entry.getKey());
+				if ("magma_2".equals(kind)) medium++;
+				if ("magma_1".equals(kind)) small++;
+			}
+		}
+		int size;
+		if (medium < 4) {
+			size = 2;
+		} else if (small < 8) {
+			size = 1;
+		} else {
+			player.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Du hast schon alle Minis!").withStyle(ChatFormatting.GRAY)));
+			return;
+		}
+		ServerLevel level = player.level();
+		Entity cube = create(level, "magma_cube");
+		if (cube == null) {
+			return;
+		}
+		try {
+			var method = cube.getClass().getMethod("setSize", int.class, boolean.class);
+			method.invoke(cube, size, true);
+		} catch (ReflectiveOperationException ignored) {
+			// dann eben in Standardgröße
+		}
+		cube.setPos(player.getX() + 1.0, player.getY(), player.getZ() + 1.0);
+		level.addFreshEntity(cube);
+		minions.put(cube.getUUID(), player.getUUID());
+		minionLevels.put(cube.getUUID(), level);
+		minionKinds.put(cube.getUUID(), "magma_" + size);
+		MobChallenge.playSound(player, "minecraft:entity.magma_cube.jump", 1.0f);
+		startCooldown(player, 1, 3 * 20);
 	}
 
 	/** Teleport dorthin, wo man hinschaut (Enderman, Shulker). */
@@ -329,12 +570,18 @@ public final class MobAbilities {
 				}
 				if (closest != null) {
 					mob.setTarget(closest);
+					try {
+						// Bienen und andere neutrale Mobs müssen „wütend“ sein, um anzugreifen
+						mob.getClass().getMethod("startPersistentAngerTimer").invoke(mob);
+					} catch (ReflectiveOperationException ignored) {
+					}
 				}
 			}
 		}
 		for (UUID id : dead) {
 			minions.remove(id);
 			minionLevels.remove(id);
+			minionKinds.remove(id);
 		}
 	}
 
@@ -351,6 +598,13 @@ public final class MobAbilities {
 		var attribute = player.getAttribute(Attributes.BLOCK_BREAK_SPEED);
 		if (attribute != null && Math.abs(attribute.getBaseValue() - speed) > 0.001) {
 			attribute.setBaseValue(speed);
+			if (speed > 1) {
+				player.removeEffect(net.minecraft.world.effect.MobEffects.MINING_FATIGUE);
+				player.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.HASTE, -1, 4, true, false, true));
+			} else {
+				player.removeEffect(net.minecraft.world.effect.MobEffects.HASTE);
+				player.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.MINING_FATIGUE, -1, 0, true, false, true));
+			}
 		}
 	}
 }

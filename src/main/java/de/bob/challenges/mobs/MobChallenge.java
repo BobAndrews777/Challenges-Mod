@@ -63,6 +63,15 @@ public final class MobChallenge {
 	/** Eisengolem: letzte erlaubte Lebenspunkte (Heilen nur mit Eisen) */
 	private final Map<UUID, Float> golemHealth = new HashMap<>();
 	private final Map<UUID, MobStatePayload> lastState = new HashMap<>();
+	/** Magma Cube: 3 = groß, 2 = mittel, 1 = klein */
+	private final Map<UUID, Integer> magmaSize = new HashMap<>();
+	/** Reitbare Mobs mit Sattel */
+	private final Set<UUID> saddled = new HashSet<>();
+	/** Magma-Hüpfen und Kamel-Dash: Tick, ab dem es wieder geht */
+	private final Map<UUID, Long> moveCooldown = new HashMap<>();
+	private final Map<UUID, Boolean> lastJumpInput = new HashMap<>();
+	/** Blaze: verbleibende Flugzeit in Ticks */
+	private final Map<UUID, Integer> blazeStamina = new HashMap<>();
 	private long tick = 0;
 
 	private MobChallenge() {
@@ -138,6 +147,10 @@ public final class MobChallenge {
 		s().mobAssignments.put(player.getUUID().toString(), kind.name());
 		touched.add(player.getUUID());
 		golemHealth.remove(player.getUUID());
+		magmaSize.remove(player.getUUID());
+		saddled.remove(player.getUUID());
+		blazeStamina.remove(player.getUUID());
+		player.ejectPassengers();
 		ChallengeManager.get().save();
 		apply(player, kind);
 		player.setHealth(player.getMaxHealth());
@@ -166,6 +179,9 @@ public final class MobChallenge {
 		s().mobAssignments.clear();
 		transformQueue.clear();
 		golemHealth.clear();
+		magmaSize.clear();
+		saddled.clear();
+		blazeStamina.clear();
 		abilities.reset();
 		if (server != null) {
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -188,10 +204,22 @@ public final class MobChallenge {
 	}
 
 	private static void infiniteEffect(ServerPlayer player, Holder<MobEffect> effect) {
+		infiniteEffect(player, effect, 0);
+	}
+
+	private static void infiniteEffect(ServerPlayer player, Holder<MobEffect> effect, int amplifier) {
 		MobEffectInstance current = player.getEffect(effect);
-		if (current == null || !current.isInfiniteDuration()) {
-			player.addEffect(new MobEffectInstance(effect, -1, 0, true, false, true));
+		if (current == null || !current.isInfiniteDuration() || current.getAmplifier() != amplifier) {
+			if (current != null) {
+				player.removeEffect(effect);
+			}
+			player.addEffect(new MobEffectInstance(effect, -1, amplifier, true, false, true));
 		}
+	}
+
+	/** Magma Cube: Größe 3/2/1 → Leben, Größe und Sprunghöhe */
+	int magmaSize(ServerPlayer player) {
+		return magmaSize.getOrDefault(player.getUUID(), 3);
 	}
 
 	private static void removeInfinite(ServerPlayer player, Holder<MobEffect> effect) {
@@ -202,13 +230,23 @@ public final class MobChallenge {
 	}
 
 	private void apply(ServerPlayer player, MobKind kind) {
-		setBase(player.getAttribute(Attributes.MAX_HEALTH), kind.hearts * 2.0);
-		setBase(player.getAttribute(Attributes.SCALE), kind.scale());
-		setBase(player.getAttribute(Attributes.JUMP_STRENGTH), kind.jumpStrength());
+		double maxHealth = kind.hearts * 2.0;
+		double scale = kind.scale();
+		double jump = kind.jumpStrength();
+		if (kind == MobKind.MAGMA_CUBE) {
+			int size = magmaSize(player);
+			maxHealth = size == 3 ? 16.0 : size == 2 ? 4.0 : 1.0;
+			scale = size == 3 ? 2.04 / 1.8 : size == 2 ? 1.02 / 1.8 : 0.52 / 1.8;
+			jump = size == 3 ? 0.85 : size == 2 ? 0.62 : 0.42; // 4 / 2 / 1 Block(e)
+		}
+		setBase(player.getAttribute(Attributes.MAX_HEALTH), maxHealth);
+		setBase(player.getAttribute(Attributes.SCALE), scale);
+		setBase(player.getAttribute(Attributes.JUMP_STRENGTH), jump);
 		setBase(player.getAttribute(Attributes.SAFE_FALL_DISTANCE), kind.safeFallDistance());
 		setBase(player.getAttribute(Attributes.FALL_DAMAGE_MULTIPLIER), kind.fallDamageMultiplier());
 		boolean rolled = abilities.isRolledUp(player);
-		setBase(player.getAttribute(Attributes.MOVEMENT_SPEED), kind.has(MobKind.Flags.NO_WALK) || rolled ? 0.0 : 0.1);
+		boolean noWalk = kind.has(MobKind.Flags.NO_WALK) || rolled || kind == MobKind.MAGMA_CUBE;
+		setBase(player.getAttribute(Attributes.MOVEMENT_SPEED), noWalk ? 0.0 : 0.1);
 		if (rolled) {
 			setBase(player.getAttribute(Attributes.JUMP_STRENGTH), 0.0);
 		}
@@ -226,7 +264,18 @@ public final class MobChallenge {
 		if (kind.has(MobKind.Flags.DARKNESS)) infiniteEffect(player, MobEffects.DARKNESS);
 		else removeInfinite(player, MobEffects.DARKNESS);
 
-		boolean fly = kind.has(MobKind.Flags.FLY) || player.isCreative() || player.isSpectator();
+		// Abbau-Tempo nach Größe: winzig = Abbaulähmung, groß = Eile
+		if (kind != MobKind.SILVERFISH) {
+			int size = kind.sizeClass();
+			if (size == 0) infiniteEffect(player, MobEffects.MINING_FATIGUE, 0);
+			else removeInfinite(player, MobEffects.MINING_FATIGUE);
+			if (size == 3) infiniteEffect(player, MobEffects.HASTE, 1);
+			else if (size == 4) infiniteEffect(player, MobEffects.HASTE, 3);
+			else removeInfinite(player, MobEffects.HASTE);
+		}
+
+		boolean fly = kind.has(MobKind.Flags.FLY) || player.isCreative() || player.isSpectator()
+				|| (kind == MobKind.BLAZE && blazeStamina.getOrDefault(player.getUUID(), BLAZE_FLIGHT) > 0);
 		if (player.getAbilities().mayfly != fly) {
 			player.getAbilities().mayfly = fly;
 			if (!fly) {
@@ -255,6 +304,9 @@ public final class MobChallenge {
 		removeInfinite(player, MobEffects.WATER_BREATHING);
 		removeInfinite(player, MobEffects.FIRE_RESISTANCE);
 		removeInfinite(player, MobEffects.DARKNESS);
+		removeInfinite(player, MobEffects.MINING_FATIGUE);
+		removeInfinite(player, MobEffects.HASTE);
+		player.ejectPassengers();
 		boolean fly = player.isCreative() || player.isSpectator();
 		if (player.getAbilities().mayfly != fly) {
 			player.getAbilities().mayfly = fly;
@@ -317,9 +369,12 @@ public final class MobChallenge {
 			if (kind == MobKind.SILVERFISH && tick % 2 == 0) {
 				abilities.tickSilverfishMining(player);
 			}
+			if (running) {
+				tickMovement(player, kind);
+			}
 		}
 
-		if (tick % 20 == 0) {
+		if (tick % 5 == 0) {
 			tickRelations(server);
 		}
 		abilities.tick(server);
@@ -349,11 +404,57 @@ public final class MobChallenge {
 		golemHealth.put(player.getUUID(), health);
 	}
 
-	/** Mitspieler heilen den Eisengolem per Rechtsklick mit einem Eisenbarren. */
+	/**
+	 * Rechtsklick auf einen Mob-Spieler: Eisengolem heilen, Sattel auflegen, aufsitzen,
+	 * Esel-Kiste öffnen (schleichen + Rechtsklick).
+	 */
 	public InteractionResult onUseEntity(Player player, InteractionHand hand, Entity target) {
-		if (!(player instanceof ServerPlayer) || !(target instanceof ServerPlayer golem) || kindOf(golem) != MobKind.IRON_GOLEM) {
+		if (!(player instanceof ServerPlayer user) || !(target instanceof ServerPlayer mobPlayer) || hand != InteractionHand.MAIN_HAND) {
 			return InteractionResult.PASS;
 		}
+		MobKind kind = kindOf(mobPlayer);
+		if (kind == null) {
+			return InteractionResult.PASS;
+		}
+		if (kind == MobKind.IRON_GOLEM) {
+			return healGolem(user, hand, mobPlayer);
+		}
+		ItemStack stack = user.getItemInHand(hand);
+		String item = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+		if (kind == MobKind.DONKEY && user.isShiftKeyDown()) {
+			DonkeyChest.open(user, mobPlayer);
+			return InteractionResult.SUCCESS;
+		}
+		if (kind.seats() > 0) {
+			if (item.equals("saddle") && !saddled.contains(mobPlayer.getUUID())) {
+				saddled.add(mobPlayer.getUUID());
+				if (!user.isCreative()) {
+					stack.shrink(1);
+				}
+				playSound(mobPlayer, "minecraft:entity.horse.saddle", 1.0f);
+				ChallengeManager.broadcast(mobPlayer.level().getServer(), Component.literal(mobPlayer.getName().getString()
+						+ " hat jetzt einen Sattel und kann geritten werden.").withStyle(ChatFormatting.GRAY));
+				return InteractionResult.SUCCESS;
+			}
+			if (saddled.contains(mobPlayer.getUUID()) && stack.isEmpty()) {
+				if (mobPlayer.getPassengers().size() >= kind.seats()) {
+					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Kein Platz mehr!").withStyle(ChatFormatting.RED)));
+					return InteractionResult.FAIL;
+				}
+				if (user.startRiding(mobPlayer, true, true)) {
+					return InteractionResult.SUCCESS;
+				}
+			}
+			if (!saddled.contains(mobPlayer.getUUID()) && stack.isEmpty()) {
+				user.connection.send(new ClientboundSetActionBarTextPacket(
+						Component.literal("Zum Reiten braucht " + mobPlayer.getName().getString() + " erst einen Sattel.").withStyle(ChatFormatting.GRAY)));
+			}
+		}
+		return InteractionResult.PASS;
+	}
+
+	/** Mitspieler heilen den Eisengolem per Rechtsklick mit einem Eisenbarren. */
+	private InteractionResult healGolem(ServerPlayer player, InteractionHand hand, ServerPlayer golem) {
 		ItemStack stack = player.getItemInHand(hand);
 		if (!"iron_ingot".equals(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath())) {
 			return InteractionResult.PASS;
@@ -487,26 +588,161 @@ public final class MobChallenge {
 		if (kind == MobKind.ARMADILLO && abilities.isRolledUp(player)) {
 			return false;
 		}
+		if (kind != null && source.getEntity() instanceof Mob mob && !mayTarget(mob, player)) {
+			mob.setTarget(null);
+			return false;
+		}
 		return true;
+	}
+
+	/** Magma Cube teilt sich bei tödlichem Schaden in die nächstkleinere Stufe. */
+	public boolean allowDeath(LivingEntity entity) {
+		if (!(entity instanceof ServerPlayer player) || kindOf(player) != MobKind.MAGMA_CUBE) {
+			return true;
+		}
+		int size = magmaSize(player);
+		if (size <= 1) {
+			return true;
+		}
+		magmaSize.put(player.getUUID(), size - 1);
+		apply(player, MobKind.MAGMA_CUBE);
+		player.setHealth(player.getMaxHealth());
+		playSound(player, "minecraft:entity.magma_cube.squish", 1.0f);
+		ChallengeManager.broadcast(player.level().getServer(), Component.literal(player.getName().getString()
+				+ " ist jetzt ein " + (size - 1 == 2 ? "mittlerer" : "kleiner") + " Magma Cube!").withStyle(ChatFormatting.GOLD));
+		return false;
 	}
 
 	// ------------------------------------------------------------------
 	// Freund und Feind
 	// ------------------------------------------------------------------
 
-	/** Mobs der eigenen Art greifen nicht an. */
+	private static final Set<MobKind> MONSTERS = Set.of(MobKind.CREEPER, MobKind.ENDERMAN, MobKind.BREEZE, MobKind.BLAZE,
+			MobKind.ELDER_GUARDIAN, MobKind.GHAST, MobKind.MAGMA_CUBE, MobKind.SILVERFISH, MobKind.WARDEN, MobKind.EVOKER,
+			MobKind.SHULKER);
+
+	private static String typeOf(Entity entity) {
+		return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath();
+	}
+
+	/** Darf dieser Mob den Spieler als Ziel nehmen? (aus dem Mob-Mixin und für den Schaden) */
+	public boolean mayTarget(Mob mob, LivingEntity target) {
+		if (!(target instanceof ServerPlayer player)) {
+			return true;
+		}
+		MobKind kind = kindOf(player);
+		if (kind == null) {
+			return true;
+		}
+		return !typeOf(mob).equals(kind.entityId) && !abilities.isMinionOf(mob, player);
+	}
+
+	/**
+	 * Freund und Feind:
+	 * - Mobs der eigenen Art greifen nicht an
+	 * - Eisengolems jagen Spieler, die Monster sind
+	 * - Creeper und Phantome fliehen vor der Katze, Spinnen vor dem Gürteltier
+	 */
 	private void tickRelations(MinecraftServer server) {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			MobKind kind = kindOf(player);
-			if (kind == null) {
+			if (kind == null || player.isSpectator()) {
 				continue;
 			}
-			AABB area = player.getBoundingBox().inflate(32);
-			for (Mob mob : player.level().getEntitiesOfClass(Mob.class, area, m -> m.getTarget() == player)) {
-				String type = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath();
-				if (type.equals(kind.entityId) || abilities.isMinionOf(mob, player)) {
+			AABB area = player.getBoundingBox().inflate(24);
+			for (Mob mob : player.level().getEntitiesOfClass(Mob.class, area, Mob::isAlive)) {
+				String type = typeOf(mob);
+				if (mob.getTarget() == player && !mayTarget(mob, player)) {
 					mob.setTarget(null);
 				}
+				if (MONSTERS.contains(kind) && (type.equals("iron_golem") || type.equals("snow_golem"))
+						&& mob.getTarget() == null && mob.distanceToSqr(player) < 16 * 16) {
+					mob.setTarget(player);
+				}
+				boolean afraid = (kind == MobKind.CAT && (type.equals("creeper") || type.equals("phantom")))
+						|| (kind == MobKind.ARMADILLO && (type.equals("spider") || type.equals("cave_spider")));
+				if (afraid && mob.distanceToSqr(player) < 8 * 8) {
+					if (mob.getTarget() == player) {
+						mob.setTarget(null);
+					}
+					double dx = mob.getX() - player.getX();
+					double dz = mob.getZ() - player.getZ();
+					double length = Math.max(0.1, Math.sqrt(dx * dx + dz * dz));
+					mob.setDeltaMovement(dx / length * 0.4, mob.getDeltaMovement().y, dz / length * 0.4);
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Bewegung: Magma-Hüpfen, Kamel-Dash, Blaze-Flug, Schreiter-Reiter
+	// ------------------------------------------------------------------
+
+	private static final int BLAZE_FLIGHT = 60;
+
+	private void tickMovement(ServerPlayer player, MobKind kind) {
+		UUID id = player.getUUID();
+		var input = player.getLastClientInput();
+		switch (kind) {
+			case MAGMA_CUBE -> {
+				// Fortbewegung nur durch Hüpfen: Bewegungstaste auf dem Boden = Hüpfer in diese Richtung
+				boolean moving = input.forward() || input.backward() || input.left() || input.right();
+				if (player.onGround() && moving && tick >= moveCooldown.getOrDefault(id, 0L)) {
+					double yaw = Math.toRadians(player.getYRot());
+					double forward = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
+					double strafe = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
+					double x = -Math.sin(yaw) * forward + Math.cos(yaw) * strafe;
+					double z = Math.cos(yaw) * forward + Math.sin(yaw) * strafe;
+					double length = Math.max(1.0, Math.sqrt(x * x + z * z));
+					int size = magmaSize(player);
+					double push = size == 3 ? 0.55 : size == 2 ? 0.45 : 0.35;
+					double up = size == 3 ? 0.65 : size == 2 ? 0.55 : 0.42;
+					player.setDeltaMovement(x / length * push, up, z / length * push);
+					player.hurtMarked = true;
+					moveCooldown.put(id, tick + 12);
+				}
+			}
+			case CAMEL -> {
+				// Leertaste = Dash nach vorne (Abklingzeit wie beim echten Kamel)
+				boolean jump = input.jump();
+				boolean wasJump = lastJumpInput.getOrDefault(id, false);
+				lastJumpInput.put(id, jump);
+				if (jump && !wasJump && player.onGround() && tick >= moveCooldown.getOrDefault(id, 0L)) {
+					var look = player.getLookAngle();
+					double length = Math.max(0.01, Math.sqrt(look.x * look.x + look.z * look.z));
+					player.setDeltaMovement(look.x / length * 1.4, 0.4, look.z / length * 1.4);
+					player.hurtMarked = true;
+					playSound(player, "minecraft:entity.camel.dash", 1.0f);
+					moveCooldown.put(id, tick + 55);
+				}
+			}
+			case BLAZE -> {
+				// Kurz fliegen (3 Sekunden), danach langsam nach unten gleiten; auf dem Boden lädt es sich auf
+				int stamina = blazeStamina.getOrDefault(id, BLAZE_FLIGHT);
+				if (player.getAbilities().flying) {
+					stamina = Math.max(0, stamina - 1);
+					if (stamina == 0) {
+						player.getAbilities().flying = false;
+						player.getAbilities().mayfly = false;
+						player.onUpdateAbilities();
+					}
+				} else if (player.onGround()) {
+					stamina = Math.min(BLAZE_FLIGHT, stamina + 2);
+				}
+				blazeStamina.put(id, stamina);
+				if (!player.onGround() && !player.getAbilities().flying && player.getDeltaMovement().y < 0) {
+					player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 10, 0, true, false, false));
+				}
+			}
+			case STRIDER -> {
+				// Reiter auf dem Schreiter verbrennen nicht
+				for (Entity passenger : player.getPassengers()) {
+					if (passenger instanceof ServerPlayer rider) {
+						rider.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 40, 0, true, false, true));
+					}
+				}
+			}
+			default -> {
 			}
 		}
 	}

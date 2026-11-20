@@ -16,6 +16,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import de.bob.challenges.ChallengesMod;
 import de.bob.challenges.mobs.AbilityPayload;
+import de.bob.challenges.mobs.MobFlags;
 import de.bob.challenges.mobs.MobStatePayload;
 
 /**
@@ -46,8 +47,14 @@ public final class MobClient {
 			}
 		});
 
-		ClientPlayNetworking.registerGlobalReceiver(MobStatePayload.TYPE, (payload, context) -> state = payload);
-		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> state = new MobStatePayload("", "", 0, "", 0));
+		ClientPlayNetworking.registerGlobalReceiver(MobStatePayload.TYPE, (payload, context) -> {
+			state = payload;
+			MobFlags.clientKind = payload.kind();
+		});
+		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> {
+			state = new MobStatePayload("", "", 0, "", 0);
+			MobFlags.clientKind = "";
+		});
 		HudElementRegistry.addLast(ChallengesMod.id("mob_state"), MobClient::extract);
 	}
 

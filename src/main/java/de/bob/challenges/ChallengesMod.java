@@ -121,6 +121,7 @@ public final class ChallengesMod implements ModInitializer {
 		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source));
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));
 		ServerPlayerEvents.JOIN.register(player -> {
 			if (player.level().getServer() != null) {
 				mobs.onJoin(player.level().getServer(), player);

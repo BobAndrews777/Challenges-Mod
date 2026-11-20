@@ -9,11 +9,11 @@ import java.util.Set;
 public enum MobKind {
 	PARROT("Papagei", "parrot", 3, 0.9, true, Set.of("wheat_seeds"),
 			Flags.FLY, "Tanzen", null),
-	STRIDER("Schreiter", "strider", 10, 1.7, false, null,
+	STRIDER("Schreiter", "strider", 10, 1.7, true, null,
 			Flags.FIRE_IMMUNE, null, null),
-	DONKEY("Esel", "donkey", 13, 1.5, false, Set.of("wheat"),
+	DONKEY("Esel", "donkey", 13, 1.5, true, Set.of("wheat"),
 			0, null, null),
-	PIG("Schwein", "pig", 5, 0.9, false, null,
+	PIG("Schwein", "pig", 5, 0.9, true, null,
 			0, "Grunzen", null),
 	BEE("Biene", "bee", 5, 0.6, true, Flags.FLOWERS,
 			Flags.FLY, "Bienenschwarm", null),
@@ -25,7 +25,7 @@ public enum MobKind {
 			0, "Einrollen", null),
 	CAT("Katze", "cat", 5, 0.7, true, null,
 			Flags.NO_FALL, null, null),
-	CAMEL("Kamel", "camel", 16, 2.375, false, null,
+	CAMEL("Kamel", "camel", 16, 2.375, true, null,
 			0, null, null),
 	IRON_GOLEM("Eisengolem", "iron_golem", 50, 2.7, true, null,
 			Flags.NO_FALL | Flags.IRON_HEAL_ONLY, null, null),
@@ -42,7 +42,7 @@ public enum MobKind {
 			Flags.WATER_BREATHING, "Laserstrahl", null),
 	GHAST("Ghast", "ghast", 5, 4.0, true, Set.of("lava_bucket", "magma_block", "magma_cream"),
 			Flags.FLY | Flags.NO_FALL | Flags.FIRE_IMMUNE, "Feuerball", null),
-	MAGMA_CUBE("Magma Cube", "magma_cube", 8, 2.04, false, Set.of("lava_bucket", "magma_block", "magma_cream"),
+	MAGMA_CUBE("Magma Cube", "magma_cube", 8, 2.04, true, Set.of("lava_bucket", "magma_block", "magma_cream"),
 			Flags.NO_FALL | Flags.FIRE_IMMUNE, "Mini-Magmawürfel", null),
 	SILVERFISH("Silberfisch", "silverfish", 4, 0.3, true, Set.of("stone", "cobblestone"),
 			0, "Silberfische rufen", null),
@@ -119,21 +119,33 @@ public enum MobKind {
 		return 36;
 	}
 
-	/** Abbau-Tempo nach Größe: kleine Mobs langsamer, große schneller. */
+	/** Größenklasse: 0 winzig, 1 klein, 2 normal, 3 groß, 4 riesig */
+	public int sizeClass() {
+		if (height < 0.7) return 0;
+		if (height < 1.4) return 1;
+		if (height < 2.0) return 2;
+		if (height < 3.0) return 3;
+		return 4;
+	}
+
+	/** Abbau-Tempo (Attribut). Dazu kommt Eile bzw. Abbaulähmung, siehe MobChallenge. */
 	public double breakSpeed() {
-		if (height < 0.7) {
-			return 0.5;
-		}
-		if (height < 1.4) {
-			return 0.75;
-		}
-		if (height < 2.0) {
-			return 1.0;
-		}
-		if (height < 3.0) {
-			return 1.6;
-		}
-		return 2.0;
+		return switch (sizeClass()) {
+			case 0 -> 1.0;
+			case 1 -> 0.7;
+			case 2 -> 1.0;
+			case 3 -> 1.5;
+			default -> 2.0;
+		};
+	}
+
+	/** Reitbar? Wie viele Reiter? */
+	public int seats() {
+		return switch (this) {
+			case CAMEL -> 2;
+			case STRIDER, DONKEY, PIG -> 1;
+			default -> 0;
+		};
 	}
 
 	/** Sprungkraft (Vanilla-Spieler 0,42 ≈ 1,25 Blöcke) */
@@ -141,6 +153,7 @@ public enum MobKind {
 		return switch (this) {
 			case FROG -> 0.85;   // ca. 4 Blöcke
 			case GOAT -> 1.35;   // ca. 10 Blöcke
+			case CAMEL -> 0.0;   // Leertaste = Dash statt Springen
 			default -> has(Flags.NO_WALK) ? 0.0 : 0.42;
 		};
 	}

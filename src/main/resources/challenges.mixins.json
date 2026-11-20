@@ -9,7 +9,9 @@
 		"ItemEntityMixin",
 		"AbstractContainerMenuMixin",
 		"ResultSlotMixin",
-		"PlayerEdgeMixin"
+		"PlayerEdgeMixin",
+		"MobTargetMixin",
+		"LivingEntityLavaMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
