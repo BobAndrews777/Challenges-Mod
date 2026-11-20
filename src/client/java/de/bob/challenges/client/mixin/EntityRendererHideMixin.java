@@ -14,15 +14,19 @@ import net.minecraft.world.entity.player.Player;
 import de.bob.challenges.mobs.MobFlags;
 
 /**
- * Mob-Challenge: Verwandelte Mitspieler werden nicht als Spieler gezeichnet –
- * man sieht stattdessen ihren Mob (das Kostüm kommt vom Server).
+ * Mob-Challenge: Verwandelte Spieler (auch man selbst in F5) werden nicht als Spieler gezeichnet –
+ * man sieht stattdessen ihren Mob. Das eigene Kostüm wird nur in der Ich-Perspektive ausgeblendet.
  */
 @Mixin(EntityRenderer.class)
 public class EntityRendererHideMixin {
 	@Inject(method = "shouldRender", at = @At("HEAD"), cancellable = true, require = 0)
 	private void challenges$hideMobPlayers(CallbackInfoReturnable<Boolean> cir, @Local(argsOnly = true) Entity entity) {
-		if (entity instanceof Player player && player != Minecraft.getInstance().player
-				&& MobFlags.dims.containsKey(player.getUUID())) {
+		if (entity instanceof Player player && MobFlags.dims.containsKey(player.getUUID())) {
+			cir.setReturnValue(false);
+			return;
+		}
+		if (MobFlags.ownDisguiseId >= 0 && entity.getId() == MobFlags.ownDisguiseId
+				&& Minecraft.getInstance().options.getCameraType().isFirstPerson()) {
 			cir.setReturnValue(false);
 		}
 	}

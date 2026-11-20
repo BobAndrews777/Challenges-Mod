@@ -14,6 +14,9 @@ public final class MobFlags {
 	/** Wird gesetzt, sobald der Hitbox-Mixin greift – dann ist keine Größen-Skalierung mehr nötig. */
 	public static volatile boolean dimsMixinWorks = false;
 
+	/** Auf dem Client: Entity-ID des eigenen Mob-Kostüms (-1 = keins) */
+	public static volatile int ownDisguiseId = -1;
+
 	private MobFlags() {
 	}
 

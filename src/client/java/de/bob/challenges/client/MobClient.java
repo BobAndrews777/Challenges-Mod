@@ -87,6 +87,8 @@ public final class MobClient {
 		});
 
 		ClientPlayNetworking.registerGlobalReceiver(ReelPayload.TYPE, (payload, context) -> startReel(payload));
+		ClientPlayNetworking.registerGlobalReceiver(de.bob.challenges.mobs.OwnDisguisePayload.TYPE,
+				(payload, context) -> MobFlags.ownDisguiseId = payload.entityId());
 
 		// Dash / Hüpfer vom Server direkt auf den eigenen Spieler anwenden
 		ClientPlayNetworking.registerGlobalReceiver(MotionPayload.TYPE, (payload, context) -> {
@@ -117,11 +119,15 @@ public final class MobClient {
 		ClientPlayNetworking.registerGlobalReceiver(MobStatePayload.TYPE, (payload, context) -> {
 			state = payload;
 			MobFlags.clientKind = payload.kind();
+			if (payload.kind().isEmpty()) {
+				MobFlags.ownDisguiseId = -1;
+			}
 		});
 		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> {
 			state = new MobStatePayload("", "", 0, "", 0);
 			MobFlags.clientKind = "";
 			MobFlags.dims.clear();
+			MobFlags.ownDisguiseId = -1;
 		});
 		HudElementRegistry.addLast(ChallengesMod.id("mob_state"), MobClient::extract);
 		HudElementRegistry.addLast(ChallengesMod.id("mob_reel"), MobClient::extractReel);

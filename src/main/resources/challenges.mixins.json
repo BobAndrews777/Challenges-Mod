@@ -15,7 +15,7 @@
 		"PlayerDimensionsMixin",
 		"LavaCollisionMixin",
 		"ProjectileHitMixin",
-		"EntityBroadcastMixin"
+		"LivingEntityDimensionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

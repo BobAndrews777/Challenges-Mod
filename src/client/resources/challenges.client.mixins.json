@@ -5,7 +5,8 @@
 	"client": [
 		"AbstractContainerScreenAccessor",
 		"AbstractClientPlayerMixin",
-		"EntityRendererHideMixin"
+		"EntityRendererHideMixin",
+		"LivingEntityPickMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

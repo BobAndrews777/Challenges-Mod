@@ -8,7 +8,7 @@ import java.util.UUID;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -25,10 +25,9 @@ import net.minecraft.world.scores.Team;
 
 /**
  * Etappe 3: Aussehen. Jeder verwandelte Spieler bekommt einen echten Mob als „Kostüm“, der ihm
- * jeden Tick folgt (ohne KI, lautlos, ohne Schwerkraft, schiebt niemanden). Die anderen sehen den Mob,
- * der Spieler selbst wird bei ihnen ausgeblendet (Client-Mixin). Treffer auf den Mob gehen an den Spieler –
- * damit passt auch die Hitbox zum Mob. Der Spieler selbst sieht sein eigenes Kostüm nicht (sonst
- * würde es ihm die Sicht versperren).
+ * jeden Tick folgt (ohne KI, lautlos, ohne Schwerkraft, schiebt niemanden). Der Spieler selbst wird
+ * überall ausgeblendet (Client-Mixin), man sieht nur den Mob – auch sich selbst in F5. In der Ich-Perspektive
+ * wird das eigene Kostüm ausgeblendet und lässt sich nicht anklicken. Treffer auf den Mob gehen an den Spieler.
  */
 public final class Disguises {
 	private static final String TEAM = "challenges_mobs";
@@ -87,10 +86,10 @@ public final class Disguises {
 				}
 			}
 			follow(mob, player);
-			// Das eigene Kostüm beim Spieler selbst ausblenden (anfangs jeden Tick, danach ab und zu)
+			// Dem Spieler sagen, welches Kostüm seins ist: in der Ich-Perspektive blendet er es aus, in F5 sieht er sich als Mob
 			long age = tick - spawnedAt.getOrDefault(mob.getUUID(), tick);
-			if (age < 10 || tick % 20 == 0) {
-				player.connection.send(new ClientboundRemoveEntitiesPacket(mob.getId()));
+			if ((age < 10 || tick % 20 == 0) && ServerPlayNetworking.canSend(player, OwnDisguisePayload.TYPE)) {
+				ServerPlayNetworking.send(player, new OwnDisguisePayload(mob.getId()));
 			}
 		}
 		for (UUID id : new HashSet<>(byPlayer.keySet())) {

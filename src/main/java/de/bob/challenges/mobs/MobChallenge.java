@@ -556,9 +556,25 @@ public final class MobChallenge {
 					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Kein Platz mehr!").withStyle(ChatFormatting.RED)));
 					return InteractionResult.FAIL;
 				}
+				if (user.isPassenger()) {
+					user.stopRiding();
+				}
 				if (user.startRiding(mobPlayer, true, true)) {
+					// Beiden Seiten sofort Bescheid geben (der Server schickt das sonst nur an Zuschauer)
+					var passengers = new net.minecraft.network.protocol.game.ClientboundSetPassengersPacket(mobPlayer);
+					mobPlayer.connection.send(passengers);
+					user.connection.send(passengers);
+					user.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Du reitest auf "
+							+ mobPlayer.getName().getString() + " – Schleichen zum Absteigen").withStyle(ChatFormatting.GREEN)));
 					return InteractionResult.SUCCESS;
 				}
+				user.connection.send(new ClientboundSetActionBarTextPacket(
+						Component.literal("Aufsteigen hat nicht geklappt").withStyle(ChatFormatting.RED)));
+				return InteractionResult.FAIL;
+			}
+			if (saddled.contains(mobPlayer.getUUID()) && !stack.isEmpty()) {
+				user.connection.send(new ClientboundSetActionBarTextPacket(
+						Component.literal("Zum Aufsteigen mit leerer Hand rechtsklicken").withStyle(ChatFormatting.GRAY)));
 			}
 			if (!saddled.contains(mobPlayer.getUUID()) && stack.isEmpty()) {
 				user.connection.send(new ClientboundSetActionBarTextPacket(
