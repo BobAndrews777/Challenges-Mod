@@ -34,7 +34,7 @@ public final class ArmyGui {
 		ArmyGui self = this;
 		this.gui = new SimpleGui(MenuType.GENERIC_9x6, player, false) {
 			@Override
-			public void onClose() {
+			public void onRemoved() {
 				OPEN.remove(self);
 			}
 		};

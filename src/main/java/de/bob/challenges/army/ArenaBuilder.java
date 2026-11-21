@@ -55,7 +55,7 @@ final class ArenaBuilder {
 			problems.add("Ungültiger Name für die Arena-Map: " + structure);
 			return null;
 		}
-		Optional<StructureTemplate> template = level.getStructureManager().get(id);
+		Optional<StructureTemplate> template = level.getStructureTemplateManager().get(id);
 		if (template.isEmpty()) {
 			problems.add("Arena-Map „" + id + "“ nicht gefunden (Konstruktionsblock: Speichern unter genau diesem Namen).");
 			return null;
