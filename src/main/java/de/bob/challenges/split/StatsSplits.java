@@ -110,6 +110,9 @@ public final class StatsSplits {
 		boolean active = split.isActive(SplitType.HEARTS);
 		float share = healthShare(split.playerCount());
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (de.bob.challenges.mobs.MobChallenge.get().kindOf(player) != null) {
+				continue; // Die Mob-Challenge bestimmt die Leben selbst
+			}
 			float desired = active && split.colorOf(player) != null ? share : FULL_HEALTH;
 			AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
 			if (maxHealth != null && Math.abs(maxHealth.getBaseValue() - desired) > 0.01) {

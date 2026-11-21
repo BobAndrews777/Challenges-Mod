@@ -14,9 +14,11 @@ import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -24,7 +26,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 
+import de.bob.challenges.mobs.AbilityPayload;
+import de.bob.challenges.mobs.DimsPayload;
+import de.bob.challenges.mobs.MenuBook;
+import de.bob.challenges.mobs.MotionPayload;
+import de.bob.challenges.mobs.MobChallenge;
+import de.bob.challenges.mobs.MobStatePayload;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.MovementPayload;
+import de.bob.challenges.split.SkinPayload;
 import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitManager;
 import de.bob.challenges.split.SplitStatsPayload;
@@ -43,17 +53,25 @@ public final class ChallengesMod implements ModInitializer {
 		ChallengeCommands.register();
 
 		ServerLifecycleEvents.SERVER_STARTED.register(manager::onServerStarted);
-		ServerLifecycleEvents.SERVER_STOPPING.register(server -> manager.onServerStopping());
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			MobChallenge.get().disguises().removeAll(server);
+			manager.onServerStopping();
+		});
 		ServerTickEvents.END_SERVER_TICK.register(manager::tick);
+		ServerTickEvents.END_SERVER_TICK.register(server -> de.bob.challenges.army.ArmyBattle.get().tick(server));
 
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> manager.allowPlayerDamage(entity));
 		ServerLivingEntityEvents.AFTER_DEATH.register(manager::onEntityDeath);
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> de.bob.challenges.army.ArmyBattle.get().onEntityDeath(entity, source));
 
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) ->
 				!(player instanceof ServerPlayer serverPlayer) || manager.allowBlockBreak(serverPlayer));
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> manager.onBlockBroken(level, player, pos, state));
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> de.bob.challenges.army.ArmyBattle.get().onBlockBroken(level, player, pos, state));
 
 		ServerPlayerEvents.JOIN.register(manager::onPlayerReady);
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> manager.onPlayerReady(newPlayer));
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> de.bob.challenges.army.ArmyBattle.get().onRespawn(newPlayer));
 
 		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> {
 			manager.modifyDrops(holder, drops);
@@ -102,6 +120,38 @@ public final class ChallengesMod implements ModInitializer {
 		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> split.checkHandUse(player));
 		UseBlockCallback.EVENT.register((player, level, hand, hitResult) -> split.checkHandUse(player));
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> split.onEntityLoad(entity));
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> MobChallenge.get().disguises().onEntityLoad(entity));
+
+		// Mob-Challenge
+		MobChallenge mobs = MobChallenge.get();
+		PayloadTypeRegistry.serverboundPlay().register(AbilityPayload.TYPE, AbilityPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(MobStatePayload.TYPE, MobStatePayload.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(AbilityPayload.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			player.level().getServer().execute(() -> mobs.onAbility(player, payload.ability()));
+		});
+		UseItemCallback.EVENT.register((player, level, hand) -> MenuBook.onUse(player, hand));
+		UseItemCallback.EVENT.register((player, level, hand) -> mobs.onUseItem(player, hand));
+		PayloadTypeRegistry.clientboundPlay().register(MotionPayload.TYPE, MotionPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.ReelPayload.TYPE, de.bob.challenges.mobs.ReelPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(de.bob.challenges.mobs.DisguiseMapPayload.TYPE, de.bob.challenges.mobs.DisguiseMapPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(DimsPayload.TYPE, DimsPayload.CODEC);
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) ->
+				mobs.abilities().onDamage(entity, source));
+		ServerPlayerEvents.JOIN.register(MenuBook::giveIfMissing);
+		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source, amount));
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));
+		ServerPlayerEvents.JOIN.register(player -> {
+			if (player.level().getServer() != null) {
+				mobs.onJoin(player.level().getServer(), player);
+			}
+		});
+
+		// Split-Challenge Etappe 4: Bewegung und Abbauen
+		PayloadTypeRegistry.clientboundPlay().register(MovementPayload.TYPE, MovementPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(SkinPayload.TYPE, SkinPayload.CODEC);
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> split.mining().onBreak(level, player, pos, state));
 
 		LOGGER.info("Challenges-Mod geladen{}", worldWasReset ? " (neue Welt)" : "");
 	}

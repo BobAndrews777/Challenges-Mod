@@ -10,6 +10,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
+import de.bob.challenges.mobs.MobChallenge;
 import de.bob.challenges.split.SplitManager;
 
 import net.minecraft.ChatFormatting;
@@ -33,7 +34,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootTable;
 
 /**
@@ -106,6 +113,8 @@ public final class ChallengeManager {
 			settings.splitLevel = 0;
 			settings.xpBuckets.clear();
 			settings.portalOwners.clear();
+			settings.skinSwap.clear();
+			settings.mobAssignments.clear();
 		}
 		settings.save();
 	}
@@ -167,6 +176,7 @@ public final class ChallengeManager {
 		running = true;
 		broadcast(server, Component.literal("Der Timer läuft! Viel Glück!").withStyle(ChatFormatting.GREEN));
 		SplitManager.get().onTimerStart(server);
+		MobChallenge.get().onTimerStart(server);
 		return true;
 	}
 
@@ -183,6 +193,7 @@ public final class ChallengeManager {
 		settings.ended = false;
 		force.reset();
 		SplitManager.get().resetRun(server);
+		MobChallenge.get().reset(server);
 		save();
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (player.isSpectator()) {
@@ -243,8 +254,11 @@ public final class ChallengeManager {
 			return;
 		}
 		if (entity instanceof ServerPlayer player) {
-			if (settings.splitMode) {
-				// Split-Challenge: Stirbt einer, sterben alle
+			if (de.bob.challenges.army.ArmyBattle.get().active()) {
+				return;   // Mob Army Battle: Tod = Respawn
+			}
+			if (settings.splitMode || settings.mobMode) {
+				// Split- und Mob-Challenge: Stirbt einer, sterben alle
 				if (SplitManager.get().onPlayerDeath(server, player)) {
 					return;
 				}
@@ -304,6 +318,16 @@ public final class ChallengeManager {
 		if (!(isBlock && settings.randomBlockDrops) && !(isMob && settings.randomMobDrops)) {
 			return;
 		}
+		// Blöcke, die ohne Behutsamkeit nichts droppen (Glas, Eis …), droppen trotzdem ihr Zufalls-Item
+		if (isBlock && drops.isEmpty()) {
+			Identifier blockId = Identifier.withDefaultNamespace(path.substring("blocks/".length()));
+			if (BuiltInRegistries.BLOCK.containsKey(blockId)) {
+				Item blockItem = BuiltInRegistries.BLOCK.getValue(blockId).asItem();
+				if (blockItem != Items.AIR) {
+					drops.add(new ItemStack(blockItem));
+				}
+			}
+		}
 		for (int i = 0; i < drops.size(); i++) {
 			ItemStack original = drops.get(i);
 			if (original.isEmpty()) {
@@ -317,6 +341,23 @@ public final class ChallengeManager {
 			stack.setCount(Math.max(1, Math.min(original.getCount(), stack.getMaxStackSize())));
 			drops.set(i, stack);
 		}
+	}
+
+	/**
+	 * Zufalls-Block-Drops: Auch ohne passendes Werkzeug (z. B. Stein mit der Hand) droppt der Block
+	 * sein Zufalls-Item. Vanilla würfelt dann gar keine Beute aus, darum hier von Hand.
+	 */
+	public void onBlockBroken(Level level, Player player, BlockPos pos, BlockState state) {
+		if (!settings.randomBlockDrops || player.isCreative() || !(level instanceof ServerLevel serverLevel)
+				|| player.hasCorrectToolForDrops(state)) {
+			return;
+		}
+		Item blockItem = state.getBlock().asItem();
+		Item replacement = dropMap.get(blockItem);
+		if (blockItem == Items.AIR || replacement == null) {
+			return;
+		}
+		Block.popResource(serverLevel, pos, new ItemStack(replacement));
 	}
 
 	// ------------------------------------------------------------------
@@ -357,6 +398,7 @@ public final class ChallengeManager {
 		}
 
 		SplitManager.get().alwaysTick(server);
+		MobChallenge.get().tick(server);
 
 		if (tickCounter % 10 == 0) {
 			sendActionBar(server);

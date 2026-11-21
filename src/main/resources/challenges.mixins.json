@@ -8,7 +8,15 @@
 		"ItemStackMixin",
 		"ItemEntityMixin",
 		"AbstractContainerMenuMixin",
-		"ResultSlotMixin"
+		"ResultSlotMixin",
+		"PlayerEdgeMixin",
+		"MobTargetMixin",
+		"LivingEntityLavaMixin",
+		"PlayerDimensionsMixin",
+		"LavaCollisionMixin",
+		"ProjectileHitMixin",
+		"LivingEntityDimensionsMixin",
+		"NetherPortalMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

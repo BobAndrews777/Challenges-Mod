@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import de.bob.challenges.split.SplitFlags;
 import de.bob.challenges.split.MobDamagePayload;
+import de.bob.challenges.split.MovementPayload;
+import de.bob.challenges.split.SkinPayload;
 import de.bob.challenges.split.SlotInfoPayload;
 import de.bob.challenges.split.SplitStatsPayload;
 import de.bob.challenges.split.SplitSyncPayload;
@@ -19,6 +21,8 @@ public final class ClientSplitState {
 	public static final Map<Integer, MobDamagePayload> mobDamage = new ConcurrentHashMap<>();
 	public static volatile List<Integer> craftOwners = List.of();
 	public static volatile List<Integer> handHolders = List.of();
+	public static volatile Map<String, String> skinSwap = Map.of();
+	public static volatile MovementPayload movement = new MovementPayload(0, 0, 0, 0, false);
 
 	private ClientSplitState() {
 	}
@@ -44,6 +48,9 @@ public final class ClientSplitState {
 				mobDamage.clear();
 		craftOwners = List.of();
 		handHolders = List.of();
+		movement = new MovementPayload(0, 0, 0, 0, false);
+		skinSwap = Map.of();
+		SplitFlags.edgeProtectionDisabled = false;
 			}
 			mobDamage.put(payload.entityId(), payload);
 		}
@@ -52,6 +59,19 @@ public final class ClientSplitState {
 	public static void updateSlotInfo(SlotInfoPayload payload) {
 		craftOwners = List.copyOf(payload.craftOwners());
 		handHolders = List.copyOf(payload.handHolders());
+	}
+
+	public static void updateSkins(SkinPayload payload) {
+		Map<String, String> map = new java.util.HashMap<>();
+		for (int i = 0; i < Math.min(payload.players().size(), payload.skins().size()); i++) {
+			map.put(payload.players().get(i), payload.skins().get(i));
+		}
+		skinSwap = Map.copyOf(map);
+	}
+
+	public static void updateMovement(MovementPayload payload) {
+		movement = payload;
+		SplitFlags.edgeProtectionDisabled = (payload.activeFlags() & MovementPayload.SNEAK) != 0 && !payload.allSneaking();
 	}
 
 	public static boolean has(int flag) {

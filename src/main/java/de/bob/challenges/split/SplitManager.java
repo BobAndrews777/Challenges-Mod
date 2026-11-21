@@ -59,6 +59,8 @@ public final class SplitManager {
 	private final SharedSlots sharedSlots = new SharedSlots(this);
 	private final SharedCrafting crafting = new SharedCrafting(this, sharedSlots);
 	private final MainHandSplit mainHand = new MainHandSplit(this);
+	private final MovementSplits movement = new MovementSplits(this);
+	private final MiningSplit mining = new MiningSplit(this);
 	private List<Integer> lastSlotInfo = List.of();
 
 	private SplitManager() {
@@ -78,6 +80,10 @@ public final class SplitManager {
 
 	public SharedCrafting crafting() {
 		return crafting;
+	}
+
+	public MiningSplit mining() {
+		return mining;
 	}
 
 	/**
@@ -132,6 +138,8 @@ public final class SplitManager {
 		sharedSlots.tick(server);
 		crafting.tick(server);
 		mainHand.tick(server);
+		movement.tick(server, alwaysCounter);
+		mining.tick();
 		if (alwaysCounter % 10 == 0) {
 			sendSlotInfo(server);
 		}
@@ -199,6 +207,7 @@ public final class SplitManager {
 		s.splitLevel = 0;
 		s.xpBuckets.clear();
 		s.portalOwners.clear();
+		s.skinSwap.clear();
 		stats.reset();
 		mobDamage.reset();
 		sharedSlots.reset();
@@ -328,6 +337,9 @@ public final class SplitManager {
 		if (type == SplitType.LEVEL) {
 			stats.startLevel(server);
 		}
+		if (type == SplitType.SKINS) {
+			shuffleSkins(server);
+		}
 		if (type == SplitType.HUNGER) {
 			manager().applyUhcGameRule(server);
 		}
@@ -381,6 +393,9 @@ public final class SplitManager {
 		}
 		if (type == SplitType.MOB_DAMAGE) {
 			mobDamage.reset();
+		}
+		if (type == SplitType.SKINS) {
+			s.skinSwap.clear();
 		}
 		ChallengeManager.broadcast(server, Component.literal("Joker eingesetzt: " + type.displayName + " ist nicht mehr geteilt. Übrige Joker: " + s.jokersLeft)
 				.withStyle(ChatFormatting.GOLD));
@@ -721,6 +736,55 @@ public final class SplitManager {
 	}
 
 	// ------------------------------------------------------------------
+	// Split 19: Skins
+	// ------------------------------------------------------------------
+
+	/** Zufällige Verteilung, bei der niemand seinen eigenen Skin behält. */
+	private void shuffleSkins(MinecraftServer server) {
+		List<String> names = new ArrayList<>();
+		for (ServerPlayer player : coloredPlayers(server)) {
+			names.add(player.getName().getString());
+		}
+		s().skinSwap.clear();
+		if (names.size() < 2) {
+			return;
+		}
+		List<String> skins = new ArrayList<>(names);
+		for (int attempt = 0; attempt < 50; attempt++) {
+			java.util.Collections.shuffle(skins, random());
+			boolean ok = true;
+			for (int i = 0; i < names.size(); i++) {
+				if (names.get(i).equals(skins.get(i))) {
+					ok = false;
+				}
+			}
+			if (ok) {
+				break;
+			}
+		}
+		for (int i = 0; i < names.size(); i++) {
+			s().skinSwap.put(names.get(i), skins.get(i));
+		}
+	}
+
+	private void sendSkins(MinecraftServer server) {
+		List<String> players = new ArrayList<>();
+		List<String> skins = new ArrayList<>();
+		if (isActive(SplitType.SKINS)) {
+			for (Map.Entry<String, String> entry : s().skinSwap.entrySet()) {
+				players.add(entry.getKey());
+				skins.add(entry.getValue());
+			}
+		}
+		SkinPayload payload = new SkinPayload(players, skins);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (ServerPlayNetworking.canSend(player, SkinPayload.TYPE)) {
+				ServerPlayNetworking.send(player, payload);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
 	// Sync zum Client
 	// ------------------------------------------------------------------
 
@@ -753,6 +817,7 @@ public final class SplitManager {
 				}
 			}
 		}
+		sendSkins(server);
 		SplitSyncPayload payload = new SplitSyncPayload(entries, active, SplitFlags.placeTurnName, SplitFlags.stacksActive);
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (ServerPlayNetworking.canSend(player, SplitSyncPayload.TYPE)) {

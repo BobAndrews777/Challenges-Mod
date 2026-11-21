@@ -19,6 +19,7 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
+import de.bob.challenges.mobs.MobChallenge;
 import de.bob.challenges.split.SplitManager;
 
 /**
@@ -117,6 +118,14 @@ public final class SettingsGui {
 				List.of("So viel Zeit habt ihr", "für jede Force-Aufgabe."),
 				() -> s().forceMinutes, v -> s().forceMinutes = v, 1, " Minute(n)");
 
+		toggle(42, "zombie_spawn_egg", "Mob-Challenge",
+				List.of("Beim Timer-Start wird jeder", "in einen zufälligen Mob verwandelt.", "Stirbt einer, sterben alle."),
+				() -> s().mobMode, v -> {
+					s().mobMode = v;
+					if (v && manager().isRunning()) {
+						MobChallenge.get().onTimerStart(server());
+					}
+				});
 		toggle(43, "shears", "Split-Challenge",
 				List.of("Nach und nach wird alles", "zwischen euch aufgeteilt.", "Stirbt einer, sterben alle."),
 				() -> s().splitMode, v -> {

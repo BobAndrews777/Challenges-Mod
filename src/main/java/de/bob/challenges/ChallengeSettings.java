@@ -52,6 +52,31 @@ public final class ChallengeSettings {
 	/** Chance in Prozent, dass statt eines Splits ein Joker kommt. */
 	public int jokerChancePercent = 10;
 
+	// Mob-Challenge
+	public boolean mobMode = false;
+	/** UUID → MobKind-Name */
+	public Map<String, String> mobAssignments = new HashMap<>();
+
+	// Mob Army Battle
+	public boolean armyActive = false;
+	/** FARM, CONFIG, FIGHT oder END */
+	public String armyPhase = "FARM";
+	public int armyTicksLeft = 0;
+	public int armyFarmMinutes = 120;
+	public int armyConfigMinutes = 10;
+	/** Chance in Prozent, dass beim Abbauen zusätzlich ein Spawn-Ei droppt (in der Farmphase). */
+	public double armyEggChance = 2.0;
+	/** UUID → Team (ROT/BLAU) */
+	public Map<String, String> armyTeams = new HashMap<>();
+	/** Team → Mob-ID → Anzahl getötet */
+	public Map<String, Map<String, Integer>> armyPools = new HashMap<>();
+	/** Team → 3 Wellen, die dieses Team für den GEGNER zusammenstellt (Mob-IDs in Spawn-Reihenfolge) */
+	public Map<String, List<List<String>>> armyWaves = new HashMap<>();
+	/** Teams, die mit dem Zusammenstellen fertig sind */
+	public List<String> armyReady = new ArrayList<>();
+	/** Eigene Arena-Map (Name der Struktur vom Konstruktionsblock), leer = eingebaute Halle */
+	public String armyArena = "";
+
 	// Gespeicherter Stand
 	public long timerTicks = 0;
 	public boolean ended = false;
@@ -75,6 +100,8 @@ public final class ChallengeSettings {
 	public Map<String, Integer> xpBuckets = new HashMap<>();
 	/** Portalblock (als Zahl) → UUID des Besitzers */
 	public Map<String, String> portalOwners = new HashMap<>();
+	/** Split „Skins“: Spielername → Name, dessen Skin er trägt */
+	public Map<String, String> skinSwap = new HashMap<>();
 
 	public static Path file() {
 		return FabricLoader.getInstance().getConfigDir().resolve("challenges.json");
@@ -113,6 +140,15 @@ public final class ChallengeSettings {
 		splitMaxMinutes = Math.max(splitMinMinutes, Math.min(180, splitMaxMinutes));
 		jokerChancePercent = Math.max(0, Math.min(100, jokerChancePercent));
 		if (activeSplits == null) activeSplits = new ArrayList<>();
+		if (armyTeams == null) armyTeams = new HashMap<>();
+		if (armyPools == null) armyPools = new HashMap<>();
+		if (armyWaves == null) armyWaves = new HashMap<>();
+		if (armyReady == null) armyReady = new ArrayList<>();
+		if (armyPhase == null) armyPhase = "FARM";
+		if (armyArena == null) armyArena = "";
+		armyFarmMinutes = Math.max(1, Math.min(600, armyFarmMinutes));
+		armyConfigMinutes = Math.max(1, Math.min(60, armyConfigMinutes));
+		armyEggChance = Math.max(0, Math.min(100, armyEggChance));
 		if (removedSplits == null) removedSplits = new ArrayList<>();
 		if (playerColors == null) playerColors = new LinkedHashMap<>();
 		if (playerNames == null) playerNames = new HashMap<>();
@@ -120,5 +156,7 @@ public final class ChallengeSettings {
 		if (toolOwners == null) toolOwners = new HashMap<>();
 		if (xpBuckets == null) xpBuckets = new HashMap<>();
 		if (portalOwners == null) portalOwners = new HashMap<>();
+		if (skinSwap == null) skinSwap = new HashMap<>();
+		if (mobAssignments == null) mobAssignments = new HashMap<>();
 	}
 }
