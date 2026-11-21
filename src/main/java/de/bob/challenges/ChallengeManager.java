@@ -192,6 +192,9 @@ public final class ChallengeManager {
 		settings.timerTicks = 0;
 		settings.ended = false;
 		force.reset();
+		// Randomizer neu mischen, damit beim nächsten Mal andere Items kommen
+		settings.dropSeed = new Random().nextLong();
+		rebuildDropMap();
 		SplitManager.get().resetRun(server);
 		MobChallenge.get().reset(server);
 		save();
@@ -254,6 +257,9 @@ public final class ChallengeManager {
 			return;
 		}
 		if (entity instanceof ServerPlayer player) {
+			if (de.bob.challenges.army.ArmyBattle.get().active()) {
+				return;   // Mob Army Battle: Tod = Respawn
+			}
 			if (settings.splitMode || settings.mobMode) {
 				// Split- und Mob-Challenge: Stirbt einer, sterben alle
 				if (SplitManager.get().onPlayerDeath(server, player)) {

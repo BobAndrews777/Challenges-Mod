@@ -42,7 +42,10 @@ public final class ChallengeCommands {
 	}
 
 	public static void register() {
-		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> registerAll(dispatcher));
+		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> {
+			registerAll(dispatcher);
+			de.bob.challenges.army.ArmyCommands.register(dispatcher);
+		});
 	}
 
 	private static void registerAll(CommandDispatcher<CommandSourceStack> dispatcher) {

@@ -19,4 +19,12 @@ public class MobTargetMixin {
 			ci.cancel();
 		}
 	}
+
+	/** Mob-Kostüme werden nie entfernt – auch nicht auf „Friedlich“, wo sonst alle Monster sofort verschwinden. */
+	@Inject(method = "checkDespawn", at = @At("HEAD"), cancellable = true, require = 0)
+	private void challenges$keepDisguise(CallbackInfo ci) {
+		if (MobChallenge.get().disguises().isDisguise((Mob) (Object) this) || de.bob.challenges.army.ArmyBattle.get().isArmyMob((Mob) (Object) this)) {
+			ci.cancel();
+		}
+	}
 }

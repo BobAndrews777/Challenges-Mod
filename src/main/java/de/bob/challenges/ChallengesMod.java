@@ -58,16 +58,20 @@ public final class ChallengesMod implements ModInitializer {
 			manager.onServerStopping();
 		});
 		ServerTickEvents.END_SERVER_TICK.register(manager::tick);
+		ServerTickEvents.END_SERVER_TICK.register(server -> de.bob.challenges.army.ArmyBattle.get().tick(server));
 
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> manager.allowPlayerDamage(entity));
 		ServerLivingEntityEvents.AFTER_DEATH.register(manager::onEntityDeath);
+		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> de.bob.challenges.army.ArmyBattle.get().onEntityDeath(entity, source));
 
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) ->
 				!(player instanceof ServerPlayer serverPlayer) || manager.allowBlockBreak(serverPlayer));
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> manager.onBlockBroken(level, player, pos, state));
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> de.bob.challenges.army.ArmyBattle.get().onBlockBroken(level, player, pos, state));
 
 		ServerPlayerEvents.JOIN.register(manager::onPlayerReady);
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> manager.onPlayerReady(newPlayer));
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> de.bob.challenges.army.ArmyBattle.get().onRespawn(newPlayer));
 
 		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> {
 			manager.modifyDrops(holder, drops);
@@ -137,6 +141,8 @@ public final class ChallengesMod implements ModInitializer {
 		ServerPlayerEvents.JOIN.register(MenuBook::giveIfMissing);
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source, amount));
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> de.bob.challenges.army.ArmyBattle.get().allowDamage(entity));
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> de.bob.challenges.army.ArmyBattle.get().allowBreak(level, player, pos));
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));
 		ServerPlayerEvents.JOIN.register(player -> {
 			if (player.level().getServer() != null) {
