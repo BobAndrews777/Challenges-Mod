@@ -664,6 +664,9 @@ public final class ArmyBattle {
 			if (entity instanceof Mob mobEntity) {
 				mobEntity.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), EntitySpawnReason.MOB_SUMMONED, null);
 				mobEntity.setPersistenceRequired();
+				// Arenen ohne festes Dach: Zombies & Co. sollen nicht in der Sonne verbrennen
+				mobEntity.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+						net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE, -1, 0, true, false, false));
 			}
 			entity.setGlowingTag(true);
 			armyMobs.add(entity.getUUID());
