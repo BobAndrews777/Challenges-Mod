@@ -16,7 +16,8 @@
 		"LavaCollisionMixin",
 		"ProjectileHitMixin",
 		"LivingEntityDimensionsMixin",
-		"NetherPortalMixin"
+		"NetherPortalMixin",
+		"ExplosionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

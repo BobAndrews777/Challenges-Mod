@@ -55,6 +55,7 @@ public final class ChallengesMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(manager::onServerStarted);
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			MobChallenge.get().disguises().removeAll(server);
+			de.bob.challenges.army.TeamBackpack.save(server);
 			manager.onServerStopping();
 		});
 		ServerTickEvents.END_SERVER_TICK.register(manager::tick);
@@ -141,6 +142,8 @@ public final class ChallengesMod implements ModInitializer {
 		ServerPlayerEvents.JOIN.register(MenuBook::giveIfMissing);
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> mobs.onUseEntity(player, hand, entity));
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> mobs.allowDamage(entity, source, amount));
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> de.bob.challenges.army.ArmyBattle.get().allowDamage(entity));
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> de.bob.challenges.army.ArmyBattle.get().allowBreak(level, player, pos));
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> mobs.allowDeath(entity));
 		ServerPlayerEvents.JOIN.register(player -> {
 			if (player.level().getServer() != null) {

@@ -66,6 +66,8 @@ public final class ArmyBattle {
 	private final Random random = new Random();
 	private final Map<ArmyTeam, Fight> fights = new EnumMap<>(ArmyTeam.class);
 	private final Set<UUID> armyMobs = new HashSet<>();
+	private final Set<ArmyTeam> finished = java.util.EnumSet.noneOf(ArmyTeam.class);
+	private ArmyTeam winner;
 	/** Spieler → Tick, ab dem er wieder in die Arena darf */
 	private final Map<UUID, Long> respawnAt = new HashMap<>();
 	private List<Item> eggs;
@@ -146,6 +148,16 @@ public final class ArmyBattle {
 			return false;
 		}
 		list.remove(index);
+		ChallengeManager.get().save();
+		return true;
+	}
+
+	boolean insertAt(ArmyTeam team, int wave, int index, String mob) {
+		if (!CONFIG.equals(phase()) || s().armyReady.contains(team.name()) || available(team, mob) <= 0) {
+			return false;
+		}
+		List<String> list = waves(team).get(wave);
+		list.add(Math.max(0, Math.min(index, list.size())), mob);
 		ChallengeManager.get().save();
 		return true;
 	}
@@ -233,6 +245,10 @@ public final class ArmyBattle {
 		s().armyWaves.clear();
 		s().armyReady.clear();
 		respawnAt.clear();
+		TeamBackpack.clear();
+		// neue Runde = Randomizer neu mischen
+		ChallengeManager.get().settings().dropSeed = random.nextLong();
+		ChallengeManager.get().rebuildDropMap();
 		ChallengeManager.get().save();
 
 		BlockPos spawn = server.overworld().getRespawnData().pos();
@@ -246,7 +262,7 @@ public final class ArmyBattle {
 			player.getFoodData().setFoodLevel(20);
 			player.setGameMode(GameType.SURVIVAL);
 			ServerLevel world = server.getLevel(team.world);
-			int y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, spawn.getX(), spawn.getZ());
+			int y = safeY(world, spawn.getX(), spawn.getZ());
 			player.teleportTo(world, spawn.getX() + 0.5, y, spawn.getZ() + 0.5, Set.of(), player.getYRot(), player.getXRot(), true);
 			title(player, Component.literal(team.title()).withStyle(team.color, ChatFormatting.BOLD),
 					Component.literal("Tötet so viele Mobs wie möglich!").withStyle(ChatFormatting.YELLOW));
@@ -302,6 +318,9 @@ public final class ArmyBattle {
 		s().armyTicksLeft = 0;
 		ChallengeManager.get().save();
 		stopFights(server);
+		finished.clear();
+		winner = null;
+		setMobGriefing(server, false);
 		for (ArmyTeam team : ArmyTeam.values()) {
 			ServerLevel level = server.getLevel(team.world);
 			if (level == null) {
@@ -331,22 +350,95 @@ public final class ArmyBattle {
 				.withStyle(ChatFormatting.GOLD));
 	}
 
-	private void finish(MinecraftServer server, ArmyTeam winner) {
-		s().armyPhase = END;
-		ChallengeManager.get().save();
-		hideBars(server);
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			ArmyTeam team = teamOf(player);
-			title(player, Component.literal(winner.title() + " gewinnt!").withStyle(winner.color, ChatFormatting.BOLD),
-					Component.literal(team == winner ? "Glückwunsch!" : team == null ? "" : "Knapp daneben …").withStyle(ChatFormatting.YELLOW));
+	/** Ein Team hat alle 3 Wellen geschafft. Das erste gewinnt, das andere darf noch zu Ende kämpfen. */
+	private void teamDone(MinecraftServer server, ArmyTeam team) {
+		finished.add(team);
+		boolean first = winner == null;
+		if (first) {
+			winner = team;
+			ChallengeManager.get().win(server, team.title() + " hat alle 3 Wellen zuerst besiegt");
+			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+				ArmyTeam own = teamOf(player);
+				title(player, Component.literal(team.title() + " gewinnt!").withStyle(team.color, ChatFormatting.BOLD),
+						Component.literal(own == team ? "Glückwunsch!" : own == null ? "" : "Ihr könnt trotzdem noch zu Ende kämpfen").withStyle(ChatFormatting.YELLOW));
+			}
+		} else {
+			broadcast(server, Component.literal(team.title() + " hat jetzt auch alle 3 Wellen geschafft.").withStyle(team.color));
 		}
-		ChallengeManager.get().win(server, winner.title() + " hat alle 3 Wellen zuerst besiegt");
+		// Fertige Spieler: zurück zum Spawn
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (teamOf(player) == team) {
+				respawnAt.remove(player.getUUID());
+				toSpawn(server, player);
+				if (finished.size() < ArmyTeam.values().length) {
+					player.sendSystemMessage(Component.literal("Dem anderen Team zuschauen: /zuschauen  ·  zurück zum Spawn: /spawn")
+							.withStyle(ChatFormatting.GRAY));
+				}
+			}
+		}
+		Fight fight = fights.get(team);
+		if (fight != null) {
+			fight.clearMobs();
+		}
+		TeamBars.hide(server, "army_" + team.name().toLowerCase());
+		if (finished.size() >= ArmyTeam.values().length) {
+			end(server);
+		}
+	}
+
+	/** Alles vorbei: Regeln zurücksetzen, Zuschauer zurück zum Spawn. */
+	private void end(MinecraftServer server) {
+		s().armyPhase = END;
+		hideBars(server);
 		stopFights(server);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (player.isSpectator() && teamOf(player) != null) {
+				toSpawn(server, player);
+			}
+		}
 		s().armyActive = false;
 		ChallengeManager.get().save();
 	}
 
+	/** Zum Spawn der normalen Oberwelt, im Überlebensmodus */
+	public void toSpawn(MinecraftServer server, ServerPlayer player) {
+		ServerLevel overworld = server.overworld();
+		BlockPos spawn = overworld.getRespawnData().pos();
+		player.setGameMode(GameType.SURVIVAL);
+		player.teleportTo(overworld, spawn.getX() + 0.5, safeY(overworld, spawn.getX(), spawn.getZ()), spawn.getZ() + 0.5,
+				Set.of(), player.getYRot(), player.getXRot(), true);
+	}
+
+	/** Als Zuschauer in die Arena des anderen Teams (nur wenn das eigene Team fertig ist oder man in keinem Team ist). */
+	public String spectate(ServerPlayer player) {
+		MinecraftServer server = player.level().getServer();
+		if (!active() || !FIGHT.equals(phase()) || server == null) {
+			return "Gerade läuft kein Kampf.";
+		}
+		ArmyTeam own = teamOf(player);
+		if (own != null && !finished.contains(own)) {
+			return "Erst die eigenen Wellen besiegen!";
+		}
+		for (ArmyTeam team : ArmyTeam.values()) {
+			Fight fight = fights.get(team);
+			if (team != own && fight != null && !finished.contains(team)) {
+				BlockPos view = fight.arena.center();
+				player.setGameMode(GameType.SPECTATOR);
+				player.teleportTo(fight.level, view.getX() + 0.5, view.getY(), view.getZ() + 0.5, Set.of(), player.getYRot(), 30, true);
+				return null;
+			}
+		}
+		return "Es kämpft niemand mehr.";
+	}
+
+	public boolean isFinished(ArmyTeam team) {
+		return finished.contains(team);
+	}
+
 	private void stopFights(MinecraftServer server) {
+		if (!fights.isEmpty()) {
+			setMobGriefing(server, true);
+		}
 		for (Fight fight : fights.values()) {
 			for (UUID id : fight.alive) {
 				Entity entity = fight.level.getEntity(id);
@@ -379,6 +471,7 @@ public final class ArmyBattle {
 							.withStyle(ChatFormatting.GOLD), s().armyTicksLeft / 20, s().armyFarmMinutes * 60, BossEventColors.YELLOW);
 				}
 				if (tick % 1200 == 0) {
+					TeamBackpack.save(server);
 					ChallengeManager.get().save();
 				}
 				if (s().armyTicksLeft <= 0) {
@@ -404,10 +497,12 @@ public final class ArmyBattle {
 				}
 				BossBars.hide(server, "army_phase");
 				tickRespawns(server);
-				for (Fight fight : fights.values()) {
-					if (fight.tick(server)) {
-						finish(server, fight.team);
-						return;
+				for (Fight fight : new ArrayList<>(fights.values())) {
+					if (!finished.contains(fight.team) && fight.tick(server)) {
+						teamDone(server, fight.team);
+						if (!active()) {
+							return;
+						}
 					}
 				}
 			}
@@ -420,7 +515,7 @@ public final class ArmyBattle {
 	private void keepInTeamWorlds(MinecraftServer server) {
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			ArmyTeam team = teamOf(player);
-			if (team == null || !player.isAlive() || END.equals(phase())) {
+			if (team == null || !player.isAlive() || END.equals(phase()) || finished.contains(team)) {
 				continue;
 			}
 			ResourceKey<Level> key = player.level().dimension();
@@ -429,7 +524,7 @@ public final class ArmyBattle {
 				ServerLevel world = server.getLevel(team.world);
 				if (world != null) {
 					BlockPos spawn = server.overworld().getRespawnData().pos();
-					int y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, spawn.getX(), spawn.getZ());
+					int y = safeY(world, spawn.getX(), spawn.getZ());
 					player.teleportTo(world, spawn.getX() + 0.5, y, spawn.getZ() + 0.5, Set.of(), player.getYRot(), player.getXRot(), true);
 					player.connection.send(new ClientboundSetActionBarTextPacket(
 							Component.literal("Das End ist während Mob Army Battle gesperrt").withStyle(ChatFormatting.RED)));
@@ -468,6 +563,10 @@ public final class ArmyBattle {
 		ArmyTeam team = teamOf(player);
 		MinecraftServer server = player.level().getServer();
 		if (team == null || server == null) {
+			return;
+		}
+		if (finished.contains(team)) {
+			toSpawn(server, player);
 			return;
 		}
 		respawnAt.put(player.getUUID(), tick + RESPAWN_DELAY);
@@ -510,7 +609,7 @@ public final class ArmyBattle {
 
 	private void toArena(MinecraftServer server, ServerPlayer player, ArmyTeam team) {
 		ServerLevel level = server.getLevel(team.world);
-		if (level == null || respawnAt.containsKey(player.getUUID())) {
+		if (level == null || respawnAt.containsKey(player.getUUID()) || finished.contains(team)) {
 			return;
 		}
 		Fight fight = fights.get(team);
@@ -520,6 +619,50 @@ public final class ArmyBattle {
 		List<BlockPos> spawns = fight.arena.playerSpawns();
 		BlockPos pos = spawns.get(random.nextInt(spawns.size()));
 		player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, Set.of(), player.getYRot(), 0, true);
+	}
+
+	// ------------------------------------------------------------------
+	// Schutz: Arena unzerstörbar, beim Wellen-Bauen kein Schaden
+	// ------------------------------------------------------------------
+
+	/** Im Kampf darf in der Arena nichts abgebaut werden (Platzieren geht). Kreativ-Spieler dürfen alles. */
+	public boolean allowBreak(Level level, Player player, BlockPos pos) {
+		if (!active() || !FIGHT.equals(phase()) || player.isCreative()) {
+			return true;
+		}
+		ArmyTeam team = ArmyTeam.ofLevel(level.dimension());
+		Fight fight = team == null ? null : fights.get(team);
+		if (fight == null || !fight.arena.contains(pos.getX(), pos.getY(), pos.getZ())) {
+			return true;
+		}
+		if (player instanceof ServerPlayer serverPlayer) {
+			serverPlayer.connection.send(new ClientboundSetActionBarTextPacket(
+					Component.literal("In der Arena kann nichts abgebaut werden").withStyle(ChatFormatting.RED)));
+		}
+		return false;
+	}
+
+	/** Im Kampf sind die Team-Welten vor Explosionen geschützt. */
+	public boolean protectsBlocks(Level level) {
+		return active() && FIGHT.equals(phase()) && ArmyTeam.ofLevel(level.dimension()) != null;
+	}
+
+	/** Während die Wellen gebaut werden, bekommen Team-Spieler keinen Schaden. */
+	public boolean allowDamage(LivingEntity entity) {
+		return !(entity instanceof ServerPlayer player) || !active() || !CONFIG.equals(phase()) || teamOf(player) == null;
+	}
+
+	/** Mobs (Creeper, Ghast-Feuerbälle, Endermen …) zerstören im Kampf keine Blöcke in den Team-Welten. */
+	private void setMobGriefing(MinecraftServer server, boolean allowed) {
+		for (ArmyTeam team : ArmyTeam.values()) {
+			ServerLevel level = server.getLevel(team.world);
+			if (level != null) {
+				var source = server.createCommandSourceStack().withLevel(level).withSuppressedOutput();
+				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:mob_griefing " + allowed);
+				// Im Kampf behält man sein Inventar (sonst liegen die Items in der Arena und verschwinden)
+				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:keep_inventory " + !allowed);
+			}
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -600,6 +743,18 @@ public final class ArmyBattle {
 			this.team = team;
 			this.level = level;
 			this.arena = arena;
+		}
+
+		void clearMobs() {
+			for (UUID id : alive) {
+				Entity entity = level.getEntity(id);
+				if (entity != null) {
+					entity.discard();
+				}
+				armyMobs.remove(id);
+			}
+			alive.clear();
+			queue.clear();
 		}
 
 		void loadWave(int index, List<String> mobs) {
@@ -768,6 +923,26 @@ public final class ArmyBattle {
 		for (ArmyTeam team : ArmyTeam.values()) {
 			TeamBars.hide(server, "army_" + team.name().toLowerCase());
 		}
+	}
+
+	/**
+	 * Sichere Höhe zum Hinstellen. Der Chunk wird dafür erst komplett geladen/generiert –
+	 * sonst ist die Höhenkarte noch leer und man landet unter dem Bedrock.
+	 */
+	static int safeY(ServerLevel level, int x, int z) {
+		level.getChunk(x >> 4, z >> 4);
+		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		if (y > level.getMinY() + 1) {
+			return y;
+		}
+		// Zur Not von oben nach unten den ersten festen Block suchen
+		for (int scan = Math.min(level.getMaxY() - 2, 200); scan > level.getMinY() + 1; scan--) {
+			BlockPos pos = new BlockPos(x, scan, z);
+			if (!level.getBlockState(pos.below()).isAir() && level.getBlockState(pos).isAir() && level.getBlockState(pos.above()).isAir()) {
+				return scan;
+			}
+		}
+		return 100;
 	}
 
 	static String time(int ticks) {

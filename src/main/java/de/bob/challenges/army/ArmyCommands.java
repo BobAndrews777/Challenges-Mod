@@ -82,10 +82,44 @@ public final class ArmyCommands {
 						.then(Commands.argument("name", StringArgumentType.greedyString()).executes(ctx -> {
 							ArmyBattle.s().armyArena = StringArgumentType.getString(ctx, "name").trim();
 							ChallengeManager.get().save();
-							ok(ctx, "Arena-Map: " + ArmyBattle.s().armyArena + " (Weinender Obsidian = Mob-Spawn, Leitstein = Spieler-Start)");
+							ok(ctx, "Arena-Map: " + ArmyBattle.s().armyArena + " (Lapislazuliblock = Mob-Spawn, Diamantblock = Spieler-Start)");
 							return 1;
 						})))
 				.then(Commands.literal("kills").executes(ArmyCommands::kills)));
+
+		for (String name : new String[] {"backpack", "bp", "rucksack"}) {
+			dispatcher.register(Commands.literal(name).executes(ctx -> {
+				ServerPlayer player = ctx.getSource().getPlayerOrException();
+				ArmyTeam team = ArmyBattle.get().teamOf(player);
+				if (team == null || !ArmyBattle.get().active()) {
+					ctx.getSource().sendFailure(Component.literal("Den Team-Rucksack gibt es nur im Mob Army Battle."));
+					return 0;
+				}
+				TeamBackpack.open(player, team);
+				return 1;
+			}));
+		}
+
+		dispatcher.register(Commands.literal("zuschauen").executes(ctx -> {
+			ServerPlayer player = ctx.getSource().getPlayerOrException();
+			String error = ArmyBattle.get().spectate(player);
+			if (error != null) {
+				ctx.getSource().sendFailure(Component.literal(error));
+				return 0;
+			}
+			return 1;
+		}));
+		dispatcher.register(Commands.literal("spawn").executes(ctx -> {
+			ServerPlayer player = ctx.getSource().getPlayerOrException();
+			ArmyBattle army = ArmyBattle.get();
+			ArmyTeam team = army.teamOf(player);
+			if (army.active() && team != null && !army.isFinished(team)) {
+				ctx.getSource().sendFailure(Component.literal("Das geht erst, wenn dein Team fertig ist."));
+				return 0;
+			}
+			army.toSpawn(ctx.getSource().getServer(), player);
+			return 1;
+		}));
 
 		dispatcher.register(Commands.literal("wellen").executes(ctx -> {
 			ServerPlayer player = ctx.getSource().getPlayerOrException();

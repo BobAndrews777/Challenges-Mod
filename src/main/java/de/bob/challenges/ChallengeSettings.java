@@ -76,6 +76,8 @@ public final class ChallengeSettings {
 	public List<String> armyReady = new ArrayList<>();
 	/** Eigene Arena-Map (Name der Struktur vom Konstruktionsblock), leer = eingebaute Halle */
 	public String armyArena = "";
+	/** Team → 27 Rucksack-Plätze (als JSON) */
+	public Map<String, List<String>> armyBackpacks = new HashMap<>();
 
 	// Gespeicherter Stand
 	public long timerTicks = 0;
@@ -146,6 +148,7 @@ public final class ChallengeSettings {
 		if (armyReady == null) armyReady = new ArrayList<>();
 		if (armyPhase == null) armyPhase = "FARM";
 		if (armyArena == null) armyArena = "";
+		if (armyBackpacks == null) armyBackpacks = new HashMap<>();
 		armyFarmMinutes = Math.max(1, Math.min(600, armyFarmMinutes));
 		armyConfigMinutes = Math.max(1, Math.min(60, armyConfigMinutes));
 		armyEggChance = Math.max(0, Math.min(100, armyEggChance));

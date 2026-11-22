@@ -16,11 +16,11 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 /**
  * Baut die Arena in einer Team-Welt – entweder die eingebaute Halle oder eine eigene Map
  * (mit dem Konstruktionsblock gespeicherte Struktur). In eigenen Maps markieren:
- * Weinender Obsidian = Mob-Spawnpunkt, Leitstein = Start der Spieler.
+ * Lapislazuliblock = Mob-Spawnpunkt, Diamantblock = Start der Spieler.
  */
 final class ArenaBuilder {
-	static final String MOB_MARKER = "crying_obsidian";
-	static final String PLAYER_MARKER = "lodestone";
+	static final String MOB_MARKER = "lapis_block";
+	static final String PLAYER_MARKER = "diamond_block";
 
 	/** Fertige Arena: Bereich und Punkte */
 	record Arena(BlockPos min, BlockPos max, List<BlockPos> mobSpawns, List<BlockPos> playerSpawns) {
@@ -82,11 +82,11 @@ final class ArenaBuilder {
 			}
 		}
 		if (mobSpawns.isEmpty()) {
-			problems.add("In der Arena-Map fehlt Weinender Obsidian als Mob-Spawnpunkt – Mobs spawnen jetzt in der Mitte.");
+			problems.add("In der Arena-Map fehlt ein Lapislazuliblock als Mob-Spawnpunkt – Mobs spawnen jetzt in der Mitte.");
 			mobSpawns.add(surface(level, min, max));
 		}
 		if (playerSpawns.isEmpty()) {
-			problems.add("In der Arena-Map fehlt ein Leitstein als Spieler-Start – ihr startet in der Mitte.");
+			problems.add("In der Arena-Map fehlt ein Diamantblock als Spieler-Start – ihr startet in der Mitte.");
 			playerSpawns.add(surface(level, min, max));
 		}
 		return new Arena(min, max, mobSpawns, playerSpawns);

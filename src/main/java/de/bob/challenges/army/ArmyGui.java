@@ -181,23 +181,45 @@ public final class ArmyGui {
 					.build());
 		}
 
-		// Reihenfolge der gewählten Welle
+		// Reihenfolge der gewählten Welle – gleiche Mobs direkt hintereinander werden zu einem Feld mit Anzahl zusammengefasst
 		List<String> order = waves.get(wave);
-		gui.setSlot(40, new GuiElementBuilder(Items.DIAMOND_SWORD)
-				.setName(Component.literal("Welle " + (wave + 1) + " – Reihenfolge ↓").withStyle(ChatFormatting.AQUA))
+		gui.setSlot(36, new GuiElementBuilder(Items.DIAMOND_SWORD)
+				.setName(Component.literal("Welle " + (wave + 1) + " – Reihenfolge →").withStyle(ChatFormatting.AQUA))
+				.setLore(List.of(gray(order.size() + " Mobs insgesamt"), gray("Die Zahl am Ei = so viele nacheinander")))
 				.hideDefaultTooltip()
 				.build());
-		for (int i = 0; i < 9 && i < order.size(); i++) {
-			int entry = i;
-			boolean last = i == 8 && order.size() > 9;
-			gui.setSlot(45 + i, new GuiElementBuilder(ArmyBattle.egg(order.get(i)))
-					.setName(Component.literal("#" + (i + 1) + " ").withStyle(ChatFormatting.GRAY)
-							.append(ArmyBattle.mobName(order.get(i)).copy().withStyle(ChatFormatting.WHITE)))
-					.setLore(last
-							? List.of(gray("… und " + (order.size() - 8) + " weitere"), Component.literal("Linksklick: entfernen").withStyle(ChatFormatting.YELLOW))
-							: List.of(Component.literal("Linksklick: entfernen").withStyle(ChatFormatting.YELLOW)))
+		List<int[]> runs = new ArrayList<>();   // {Start-Index, Anzahl}
+		for (int i = 0; i < order.size(); i++) {
+			if (!runs.isEmpty() && order.get(runs.get(runs.size() - 1)[0]).equals(order.get(i))) {
+				runs.get(runs.size() - 1)[1]++;
+			} else {
+				runs.add(new int[] {i, 1});
+			}
+		}
+		int[] slots = {37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53};
+		for (int r = 0; r < runs.size() && r < slots.length; r++) {
+			int start = runs.get(r)[0];
+			int count = runs.get(r)[1];
+			String mob = order.get(start);
+			boolean overflow = r == slots.length - 1 && runs.size() > slots.length;
+			List<Component> lore = new ArrayList<>();
+			lore.add(gray("Spawnt als " + (r + 1) + ". Gruppe: " + count + "×"));
+			if (overflow) {
+				lore.add(gray("… danach noch " + (runs.size() - slots.length) + " weitere Gruppen"));
+			}
+			lore.add(Component.empty());
+			lore.add(Component.literal("Rechtsklick: +1   Linksklick: −1").withStyle(ChatFormatting.YELLOW));
+			gui.setSlot(slots[r], new GuiElementBuilder(ArmyBattle.egg(mob))
+					.setName(Component.literal(count + "× ").withStyle(ChatFormatting.GOLD)
+							.append(ArmyBattle.mobName(mob).copy().withStyle(ChatFormatting.WHITE)))
+					.setCount(Math.max(1, Math.min(64, count)))
+					.setLore(lore)
 					.setCallback((index, type, action, g) -> {
-						if (config && !ready && type.isLeft && army.removeAt(team, wave, entry)) {
+						if (!config || ready) {
+							return;
+						}
+						boolean ok = type.isRight ? army.insertAt(team, wave, start + count, mob) : army.removeAt(team, wave, start + count - 1);
+						if (ok) {
 							changed();
 						}
 					})

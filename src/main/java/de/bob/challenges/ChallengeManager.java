@@ -192,6 +192,9 @@ public final class ChallengeManager {
 		settings.timerTicks = 0;
 		settings.ended = false;
 		force.reset();
+		// Randomizer neu mischen, damit beim nächsten Mal andere Items kommen
+		settings.dropSeed = new Random().nextLong();
+		rebuildDropMap();
 		SplitManager.get().resetRun(server);
 		MobChallenge.get().reset(server);
 		save();

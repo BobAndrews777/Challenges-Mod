@@ -138,6 +138,17 @@ public final class SettingsGui {
 				});
 		renderSplitWindow(44);
 
+		boolean armyOn = de.bob.challenges.army.ArmyBattle.get().active();
+		gui.setSlot(40, new GuiElementBuilder(item("diamond_sword"))
+				.setName(Component.literal("Mob Army Battle").withStyle(ChatFormatting.GOLD))
+				.setLore(List.of(status(armyOn), Component.empty(),
+						gray("2 Teams farmen Mobs und schicken"), gray("sie sich als Wellen gegenseitig."),
+						Component.empty(), Component.literal("Klick: Einstellungen & Start").withStyle(ChatFormatting.YELLOW)))
+				.glow(armyOn)
+				.hideDefaultTooltip()
+				.setCallback((index, type, action, g) -> de.bob.challenges.army.ArmyMenu.open(player))
+				.build());
+
 		gui.setSlot(45, new GuiElementBuilder(Items.BARRIER)
 				.setName(Component.literal("Schließen").withStyle(ChatFormatting.RED))
 				.setCallback((index, type, action, g) -> gui.close())
