@@ -430,7 +430,7 @@ public final class ArmyBattle {
 		for (ArmyTeam team : ArmyTeam.values()) {
 			Fight fight = fights.get(team);
 			if (team != own && fight != null && !finished.contains(team)) {
-				BlockPos view = fight.arena.center();
+				BlockPos view = fight.arena.playerSpawns().get(0).above(4);
 				player.setGameMode(GameType.SPECTATOR);
 				player.teleportTo(fight.level, view.getX() + 0.5, view.getY(), view.getZ() + 0.5, Set.of(), player.getYRot(), 30, true);
 				return null;
@@ -582,7 +582,7 @@ public final class ArmyBattle {
 		ServerLevel level = server.getLevel(team.world);
 		if (level != null) {
 			Fight fight = fights.get(team);
-			BlockPos view = fight != null ? fight.arena.center() : new BlockPos(0, 290, 0);
+			BlockPos view = fight != null ? fight.arena.playerSpawns().get(0).above(4) : new BlockPos(0, 290, 0);
 			player.teleportTo(level, view.getX() + 0.5, view.getY(), view.getZ() + 0.5, Set.of(), player.getYRot(), 60, true);
 		}
 		player.connection.send(new ClientboundSetActionBarTextPacket(
