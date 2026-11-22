@@ -2,18 +2,21 @@ package de.bob.challenges.army;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.GZIPInputStream;
 import java.util.Optional;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtAccounter;
-import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
@@ -54,6 +57,10 @@ final class ArenaBuilder {
 	}
 
 	private static Arena place(ServerLevel level, String structure, List<String> problems) {
+		Arena bundled = placeBundled(level, structure.trim().toLowerCase(), problems);
+		if (bundled != null) {
+			return bundled;
+		}
 		Identifier id = Identifier.tryParse(structure.contains(":") ? structure : "minecraft:" + structure);
 		if (id == null) {
 			problems.add("Ungültiger Name für die Arena-Map: " + structure);
@@ -65,17 +72,6 @@ final class ArenaBuilder {
 			template = level.getStructureTemplateManager().get(id);
 		} catch (RuntimeException e) {
 			error = e.getMessage();
-		}
-		if (template.isEmpty()) {
-			// In der Mod mitgelieferte Arenen direkt aus der Jar lesen
-			try (InputStream in = ArenaBuilder.class.getResourceAsStream("/data/" + id.getNamespace() + "/structure/" + id.getPath() + ".nbt")) {
-				if (in != null) {
-					CompoundTag tag = NbtIo.readCompressed(in, NbtAccounter.unlimitedHeap());
-					template = Optional.of(level.getStructureTemplateManager().readStructure(tag));
-				}
-			} catch (Exception e) {
-				error = e.getClass().getSimpleName() + ": " + e.getMessage();
-			}
 		}
 		if (template.isEmpty()) {
 			problems.add("Arena-Map „" + id + "“ nicht gefunden" + (error != null ? " (Fehler: " + error + ")" : "") + ".");
@@ -111,6 +107,100 @@ final class ArenaBuilder {
 			playerSpawns.add(surface(level, min, max));
 		}
 		return new Arena(min, max, mobSpawns, playerSpawns);
+	}
+
+	/**
+	 * In der Mod mitgelieferte Arena (resources/arenas/<name>.txt.gz) setzen.
+	 * Format: "size x y z", "palette n", n Zeilen Blockzustand, dann "x y z index" pro Block (Luft fehlt).
+	 */
+	private static Arena placeBundled(ServerLevel level, String name, List<String> problems) {
+		String file = name.contains(":") ? name.substring(name.indexOf(':') + 1) : name;
+		InputStream raw = ArenaBuilder.class.getResourceAsStream("/arenas/" + file + ".txt.gz");
+		if (raw == null) {
+			return null;
+		}
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(raw), StandardCharsets.UTF_8))) {
+			String[] size = reader.readLine().split(" ");
+			int sx = Integer.parseInt(size[1]);
+			int sy = Integer.parseInt(size[2]);
+			int sz = Integer.parseInt(size[3]);
+			int count = Integer.parseInt(reader.readLine().split(" ")[1]);
+			BlockState[] palette = new BlockState[count];
+			for (int i = 0; i < count; i++) {
+				palette[i] = parseState(reader.readLine());
+			}
+			int y0 = Math.max(level.getMinY() + 1, Math.min(250, level.getMaxY() - sy - 2));
+			BlockPos min = new BlockPos(-sx / 2, y0, -sz / 2);
+			BlockPos max = min.offset(sx - 1, sy - 1, sz - 1);
+			// Bereich leeren (z. B. Reste einer anderen Arena)
+			BlockState air = state("air");
+			for (BlockPos pos : BlockPos.betweenClosed(min.offset(-2, -2, -2), max.offset(2, 4, 2))) {
+				if (!level.getBlockState(pos).isAir()) {
+					level.setBlock(pos, air, 2);
+				}
+			}
+			List<BlockPos> mobSpawns = new ArrayList<>();
+			List<BlockPos> playerSpawns = new ArrayList<>();
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (line.isBlank()) {
+					continue;
+				}
+				String[] parts = line.split(" ");
+				BlockPos pos = min.offset(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+				BlockState state = palette[Integer.parseInt(parts[3])];
+				level.setBlock(pos, state, 2);
+				String block = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+				if (block.equals(MOB_MARKER)) {
+					mobSpawns.add(pos.above());
+				} else if (block.equals(PLAYER_MARKER)) {
+					playerSpawns.add(pos.above());
+				}
+			}
+			if (mobSpawns.isEmpty()) {
+				mobSpawns.add(surface(level, min, max));
+			}
+			if (playerSpawns.isEmpty()) {
+				playerSpawns.add(surface(level, min, max));
+			}
+			return new Arena(min, max, mobSpawns, playerSpawns);
+		} catch (Exception e) {
+			problems.add("Arena „" + file + "“ konnte nicht geladen werden: " + e.getClass().getSimpleName() + " " + e.getMessage());
+			return null;
+		}
+	}
+
+	/** "minecraft:oak_stairs[facing=east,half=bottom]" → Blockzustand (unbekannte Eigenschaften werden ignoriert) */
+	private static BlockState parseState(String text) {
+		String name = text;
+		String props = "";
+		int bracket = text.indexOf('[');
+		if (bracket >= 0) {
+			name = text.substring(0, bracket);
+			props = text.substring(bracket + 1, text.length() - 1);
+		}
+		Identifier id = Identifier.tryParse(name);
+		if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) {
+			return state("air");
+		}
+		Block block = BuiltInRegistries.BLOCK.getValue(id);
+		BlockState state = block.defaultBlockState();
+		if (!props.isEmpty()) {
+			for (String pair : props.split(",")) {
+				String[] kv = pair.split("=", 2);
+				if (kv.length == 2) {
+					Property<?> property = block.getStateDefinition().getProperty(kv[0]);
+					if (property != null) {
+						state = withValue(state, property, kv[1]);
+					}
+				}
+			}
+		}
+		return state;
+	}
+
+	private static <T extends Comparable<T>> BlockState withValue(BlockState state, Property<T> property, String value) {
+		return property.getValue(value).map(v -> state.setValue(property, v)).orElse(state);
 	}
 
 	/** Erster freier Platz von oben in der Mitte der Map */
