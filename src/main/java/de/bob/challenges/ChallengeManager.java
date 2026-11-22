@@ -66,6 +66,8 @@ public final class ChallengeManager {
 
 	private final List<Item> obtainableItems = new ArrayList<>();
 	private final Map<Item, Item> dropMap = new HashMap<>();
+	/** Mob Army Battle: eigener Randomizer für Team Blau (Team Rot nutzt den normalen) */
+	private final Map<Item, Item> dropMapBlau = new HashMap<>();
 	private final Map<UUID, Integer> lastJumps = new HashMap<>();
 	private float sharedHealth = Float.NaN;
 
@@ -150,6 +152,12 @@ public final class ChallengeManager {
 		Collections.shuffle(shuffled, new Random(settings.dropSeed));
 		for (int i = 0; i < obtainableItems.size(); i++) {
 			dropMap.put(obtainableItems.get(i), shuffled.get(i));
+		}
+		dropMapBlau.clear();
+		List<Item> shuffledBlau = new ArrayList<>(obtainableItems);
+		Collections.shuffle(shuffledBlau, new Random(settings.dropSeed ^ 0x5DEECE66DL));
+		for (int i = 0; i < obtainableItems.size(); i++) {
+			dropMapBlau.put(obtainableItems.get(i), shuffledBlau.get(i));
 		}
 	}
 
@@ -307,7 +315,8 @@ public final class ChallengeManager {
 	}
 
 	/** Zufalls-Drops für Blöcke und Mobs. Jedes Item wird immer auf dasselbe Zufalls-Item abgebildet. */
-	public void modifyDrops(Holder<LootTable> holder, List<ItemStack> drops) {
+	public void modifyDrops(Holder<LootTable> holder, List<ItemStack> drops, Level level) {
+		Map<Item, Item> dropMap = dropMapFor(level);
 		if (!settings.randomBlockDrops && !settings.randomMobDrops) {
 			return;
 		}
@@ -346,6 +355,15 @@ public final class ChallengeManager {
 		}
 	}
 
+	/** Im Mob Army Battle hat jedes Team (= jede Team-Welt) seinen eigenen Randomizer. */
+	private Map<Item, Item> dropMapFor(Level level) {
+		if (level != null && de.bob.challenges.army.ArmyBattle.get().active()
+				&& de.bob.challenges.army.ArmyTeam.ofLevel(level.dimension()) == de.bob.challenges.army.ArmyTeam.BLAU) {
+			return dropMapBlau;
+		}
+		return dropMap;
+	}
+
 	/**
 	 * Zufalls-Block-Drops: Auch ohne passendes Werkzeug (z. B. Stein mit der Hand) droppt der Block
 	 * sein Zufalls-Item. Vanilla würfelt dann gar keine Beute aus, darum hier von Hand.
@@ -356,7 +374,7 @@ public final class ChallengeManager {
 			return;
 		}
 		Item blockItem = state.getBlock().asItem();
-		Item replacement = dropMap.get(blockItem);
+		Item replacement = dropMapFor(level).get(blockItem);
 		if (blockItem == Items.AIR || replacement == null) {
 			return;
 		}

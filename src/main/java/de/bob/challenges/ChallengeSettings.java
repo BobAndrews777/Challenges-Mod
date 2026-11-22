@@ -76,6 +76,8 @@ public final class ChallengeSettings {
 	public List<String> armyReady = new ArrayList<>();
 	/** Eigene Arena-Map (Name der Struktur vom Konstruktionsblock), leer = eingebaute Halle */
 	public String armyArena = "";
+	/** Wellen-Mobs leuchten (durch Wände sichtbar) */
+	public boolean armyGlow = false;
 	/** Team → 27 Rucksack-Plätze (als JSON) */
 	public Map<String, List<String>> armyBackpacks = new HashMap<>();
 

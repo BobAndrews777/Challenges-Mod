@@ -75,7 +75,7 @@ public final class ChallengesMod implements ModInitializer {
 		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> de.bob.challenges.army.ArmyBattle.get().onRespawn(newPlayer));
 
 		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> {
-			manager.modifyDrops(holder, drops);
+			manager.modifyDrops(holder, drops, context.getLevel());
 			SplitManager.get().loot().tagLoot(holder, drops);
 		});
 

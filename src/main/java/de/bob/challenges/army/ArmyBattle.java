@@ -669,6 +669,12 @@ public final class ArmyBattle {
 				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:mob_griefing " + allowed);
 				// Im Kampf behält man sein Inventar (sonst liegen die Items in der Arena und verschwinden)
 				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:keep_inventory " + !allowed);
+				// Im Kampf: keine normalen Monster-Spawns und immer Tag
+				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:spawn_mobs " + allowed);
+				server.getCommands().performPrefixedCommand(source, "gamerule minecraft:advance_time " + allowed);
+				if (!allowed) {
+					server.getCommands().performPrefixedCommand(source, "time set noon");
+				}
 			}
 		}
 	}
@@ -831,7 +837,9 @@ public final class ArmyBattle {
 				mobEntity.addEffect(new net.minecraft.world.effect.MobEffectInstance(
 						net.minecraft.world.effect.MobEffects.FIRE_RESISTANCE, -1, 0, true, false, false));
 			}
-			entity.setGlowingTag(true);
+			if (s().armyGlow) {
+				entity.setGlowingTag(true);
+			}
 			armyMobs.add(entity.getUUID());
 			alive.add(entity.getUUID());
 			level.addFreshEntity(entity);
@@ -842,6 +850,17 @@ public final class ArmyBattle {
 		}
 
 		void pruneAndGuard(MinecraftServer server) {
+			// Neue Mobs in der Arena (z. B. geteilte Schleime, Vexe des Magiers) gehören zur Welle dazu
+			if (tick % 20 == 0) {
+				net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(arena.min().getX(), arena.min().getY(), arena.min().getZ(),
+						arena.max().getX() + 1, arena.max().getY() + 1, arena.max().getZ() + 1);
+				for (Mob mob : level.getEntitiesOfClass(Mob.class, box, m -> m.isAlive() && !armyMobs.contains(m.getUUID())
+						&& !MobChallenge.get().disguises().isDisguise(m))) {
+					armyMobs.add(mob.getUUID());
+					alive.add(mob.getUUID());
+					mob.setPersistenceRequired();
+				}
+			}
 			alive.removeIf(id -> {
 				Entity entity = level.getEntity(id);
 				if (entity == null || !entity.isAlive() || entity.isRemoved()) {

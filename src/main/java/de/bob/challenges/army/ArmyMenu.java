@@ -108,6 +108,16 @@ public final class ArmyMenu {
 				})
 				.build());
 
+		gui.setSlot(14, new GuiElementBuilder(item(s.armyGlow ? "glowstone" : "black_dye"))
+				.setName(Component.literal("Mobs leuchten: " + (s.armyGlow ? "an" : "aus")).withStyle(s.armyGlow ? ChatFormatting.GREEN : ChatFormatting.RED))
+				.setLore(List.of(gray("Wellen-Mobs sind im Kampf"), gray("durch Wände sichtbar."), Component.literal("Klick: umschalten").withStyle(ChatFormatting.YELLOW)))
+				.hideDefaultTooltip()
+				.setCallback((index, type, action, g) -> {
+					s.armyGlow = !s.armyGlow;
+					changed();
+				})
+				.build());
+
 		// Teams
 		gui.setSlot(18, new GuiElementBuilder(item("white_banner"))
 				.setName(Component.literal("Teams").withStyle(ChatFormatting.GOLD))
