@@ -73,3 +73,5 @@ Server starten, joinen, `/challenge` eingeben.
 2. **Lapislazuliblock** = Mob-Spawnpunkt (die Mobs erscheinen darauf), **Diamantblock** = Startpunkt der Spieler. Im Kampf kann in der Arena nichts abgebaut oder gesprengt werden, Platzieren geht.
 3. An Dach und Licht denken – Zombies und Skelette verbrennen sonst in der Sonne.
 4. `/army arena arena` einstellen. Gebaut auf einem anderen Server/Einzelspieler? Die Datei liegt in `world/generated/minecraft/structures/arena.nbt` – auf dem Server an dieselbe Stelle kopieren.
+
+**Mitgeliefert:** Die Arenen `desert` (klein) und `paris` (groß) stecken schon in der Mod – nichts kopieren, einfach im Menü auswählen.

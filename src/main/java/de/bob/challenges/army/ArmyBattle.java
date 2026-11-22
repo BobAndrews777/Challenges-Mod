@@ -333,6 +333,14 @@ public final class ArmyBattle {
 					broadcast(server, Component.literal(problem).withStyle(ChatFormatting.RED));
 				}
 			}
+			// Übrig gebliebene Mobs und Items einer früheren Runde entfernen
+			// (ganzer Arena-Bereich hoch über 0/0, auch wo früher eine andere Arena stand)
+			net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(
+					Math.min(arena.min().getX(), -20) - 8, Math.min(arena.min().getY(), 278) - 8, Math.min(arena.min().getZ(), -20) - 8,
+					Math.max(arena.max().getX(), 20) + 8, level.getMaxY(), Math.max(arena.max().getZ(), 20) + 8);
+			for (Entity old : level.getEntitiesOfClass(Entity.class, box, e -> !(e instanceof Player))) {
+				old.discard();
+			}
 			Fight fight = new Fight(team, level, arena);
 			fights.put(team, fight);
 			fight.loadWave(0, waves(team.other()).get(0));

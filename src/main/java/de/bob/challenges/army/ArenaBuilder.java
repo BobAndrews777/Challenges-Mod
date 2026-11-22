@@ -2,11 +2,15 @@ package de.bob.challenges.army;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.io.InputStream;
 import java.util.Optional;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
@@ -55,9 +59,26 @@ final class ArenaBuilder {
 			problems.add("Ungültiger Name für die Arena-Map: " + structure);
 			return null;
 		}
-		Optional<StructureTemplate> template = level.getStructureTemplateManager().get(id);
+		Optional<StructureTemplate> template = Optional.empty();
+		String error = null;
+		try {
+			template = level.getStructureTemplateManager().get(id);
+		} catch (RuntimeException e) {
+			error = e.getMessage();
+		}
 		if (template.isEmpty()) {
-			problems.add("Arena-Map „" + id + "“ nicht gefunden (Konstruktionsblock: Speichern unter genau diesem Namen).");
+			// In der Mod mitgelieferte Arenen direkt aus der Jar lesen
+			try (InputStream in = ArenaBuilder.class.getResourceAsStream("/data/" + id.getNamespace() + "/structure/" + id.getPath() + ".nbt")) {
+				if (in != null) {
+					CompoundTag tag = NbtIo.readCompressed(in, NbtAccounter.unlimitedHeap());
+					template = Optional.of(level.getStructureTemplateManager().readStructure(tag));
+				}
+			} catch (Exception e) {
+				error = e.getClass().getSimpleName() + ": " + e.getMessage();
+			}
+		}
+		if (template.isEmpty()) {
+			problems.add("Arena-Map „" + id + "“ nicht gefunden" + (error != null ? " (Fehler: " + error + ")" : "") + ".");
 			return null;
 		}
 		Vec3i size = template.get().getSize();
