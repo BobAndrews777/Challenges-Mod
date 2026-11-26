@@ -203,6 +203,16 @@ final class ArenaBuilder {
 		return property.getValue(value).map(v -> state.setValue(property, v)).orElse(state);
 	}
 
+	/** Arena nach dem Kampf wieder entfernen (alles zu Luft). */
+	static void remove(ServerLevel level, Arena arena) {
+		BlockState air = state("air");
+		for (BlockPos pos : BlockPos.betweenClosed(arena.min().offset(-2, -2, -2), arena.max().offset(2, 4, 2))) {
+			if (!level.getBlockState(pos).isAir()) {
+				level.setBlock(pos, air, 2 | 16);
+			}
+		}
+	}
+
 	/** Erster freier Platz von oben in der Mitte der Map */
 	private static BlockPos surface(ServerLevel level, BlockPos min, BlockPos max) {
 		int x = (min.getX() + max.getX()) / 2;

@@ -200,6 +200,8 @@ public final class ChallengeManager {
 		settings.timerTicks = 0;
 		settings.ended = false;
 		force.reset();
+		de.bob.challenges.extra.ExtraChallenges.get().reset(server);
+		ForceBattle.get().reset(server);
 		// Randomizer neu mischen, damit beim nächsten Mal andere Items kommen
 		settings.dropSeed = new Random().nextLong();
 		rebuildDropMap();
@@ -287,6 +289,7 @@ public final class ChallengeManager {
 		}
 		if (source.getEntity() instanceof ServerPlayer killer) {
 			force.onMobKilled(server, this, killer, entity.getType());
+			ForceBattle.get().onMobKilled(killer, entity.getType());
 		}
 	}
 

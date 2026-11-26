@@ -26,7 +26,10 @@ public final class ForceChallenge {
 	public enum Type {
 		BLOCK("Force Block", "Stellt euch auf"),
 		MOB("Force Mob", "Tötet"),
-		ITEM("Force Item", "Besorgt");
+		ITEM("Force Item", "Besorgt"),
+		HEIGHT("Force Höhe", "Stellt euch auf"),
+		WATER_MLG("Wasser-MLG", ""),
+		RANDOM_MLG("Random-MLG", "");
 
 		final String title;
 		final String verb;
@@ -76,6 +79,7 @@ public final class ForceChallenge {
 	private final List<EntityType<?>> mobs = new ArrayList<>();
 	private final List<Item> items = new ArrayList<>();
 
+	private final java.util.Set<java.util.UUID> reached = new java.util.HashSet<>();
 	private Type activeType = null;
 	private Object target = null;
 	private Component targetName = null;
@@ -83,6 +87,18 @@ public final class ForceChallenge {
 	private long waitTicks = -1;
 	private long waitTotal = 1;
 	private long taskTotal = 1;
+
+	public List<Block> blockTargets() {
+		return blocks;
+	}
+
+	public List<EntityType<?>> mobTargets() {
+		return mobs;
+	}
+
+	public List<Item> itemTargets() {
+		return items;
+	}
 
 	/** Löst die Listen oben gegen die echten Registries auf. Unbekannte IDs werden übersprungen. */
 	public void resolveTargets() {
@@ -118,15 +134,16 @@ public final class ForceChallenge {
 	}
 
 	private List<Type> enabledTypes(ChallengeSettings s) {
+		// Block/Mob/Item laufen jetzt im Force Battle (jeder für sich)
 		List<Type> types = new ArrayList<>();
-		if (s.forceBlock && !blocks.isEmpty()) {
-			types.add(Type.BLOCK);
+		if (s.forceHeight) {
+			types.add(Type.HEIGHT);
 		}
-		if (s.forceMob && !mobs.isEmpty()) {
-			types.add(Type.MOB);
+		if (s.forceWaterMlg) {
+			types.add(Type.WATER_MLG);
 		}
-		if (s.forceItem && !items.isEmpty()) {
-			types.add(Type.ITEM);
+		if (s.forceRandomMlg) {
+			types.add(Type.RANDOM_MLG);
 		}
 		return types;
 	}
@@ -171,6 +188,14 @@ public final class ForceChallenge {
 	}
 
 	private void startTask(MinecraftServer server, ChallengeManager manager, Type type) {
+		if (type == Type.WATER_MLG || type == Type.RANDOM_MLG) {
+			// MLG passiert sofort, dann geht es mit der nächsten Pause weiter
+			ChallengeManager.broadcast(server, Component.literal(type.title + "!").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD));
+			de.bob.challenges.extra.Mlg.get().start(server, type == Type.RANDOM_MLG);
+			activeType = null;
+			waitTicks = -1;
+			return;
+		}
 		activeType = type;
 		switch (type) {
 			case BLOCK -> {
@@ -188,9 +213,17 @@ public final class ForceChallenge {
 				target = item;
 				targetName = new ItemStack(item).getHoverName();
 			}
+			case HEIGHT -> {
+				int y = -50 + manager.random().nextInt(231);   // Y -50 bis 180
+				target = y;
+				targetName = Component.literal("Höhe Y = " + y);
+			}
+			default -> {
+			}
 		}
 		ticksLeft = manager.settings().forceMinutes * 60L * 20L;
 		taskTotal = ticksLeft;
+		reached.clear();
 		waitTicks = -1;
 
 		MutableComponent msg = Component.literal(type.title + ": ").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD)
@@ -217,6 +250,24 @@ public final class ForceChallenge {
 					return player;
 				}
 			}
+			if (activeType == Type.HEIGHT && target instanceof Integer y) {
+				// Force Höhe: JEDER muss einmal auf der Höhe stehen
+				if (player.getBlockY() == y && reached.add(player.getUUID())) {
+					ChallengeManager.broadcast(server, Component.literal(player.getName().getString() + " hat Y = " + y + " erreicht!")
+							.withStyle(ChatFormatting.GREEN));
+				}
+				boolean all = true;
+				for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+					if (other.isAlive() && !other.isSpectator() && !reached.contains(other.getUUID())) {
+						all = false;
+						break;
+					}
+				}
+				if (all && !reached.isEmpty()) {
+					return player;
+				}
+				continue;
+			}
 			if (activeType == Type.ITEM && target instanceof Item item) {
 				if (player.getInventory().countItem(item) > 0) {
 					return player;
@@ -233,8 +284,8 @@ public final class ForceChallenge {
 	}
 
 	private void complete(MinecraftServer server, ServerPlayer player) {
-		ChallengeManager.broadcast(server, Component.literal(player.getName().getString() + " hat es geschafft: ").withStyle(ChatFormatting.GREEN)
-				.append(targetName.copy().withStyle(ChatFormatting.AQUA)));
+		ChallengeManager.broadcast(server, Component.literal(activeType == Type.HEIGHT ? "Alle haben es geschafft: " : player.getName().getString() + " hat es geschafft: ")
+				.withStyle(ChatFormatting.GREEN).append(targetName.copy().withStyle(ChatFormatting.AQUA)));
 		activeType = null;
 		target = null;
 		targetName = null;

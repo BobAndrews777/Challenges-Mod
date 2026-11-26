@@ -105,15 +105,26 @@ public final class SettingsGui {
 				() -> s().sneakDeath, v -> s().sneakDeath = v);
 
 		label(36, "compass", "Force-Challenges");
-		toggle(37, "crafting_table", "Force Block",
-				List.of("Stellt euch rechtzeitig auf", "einen zufälligen Block."),
-				() -> s().forceBlock, v -> s().forceBlock = v);
-		toggle(38, "zombie_head", "Force Mob",
-				List.of("Tötet rechtzeitig einen", "zufälligen Mob."),
-				() -> s().forceMob, v -> s().forceMob = v);
-		toggle(39, "item_frame", "Force Item",
-				List.of("Besorgt rechtzeitig ein", "zufälliges Item."),
-				() -> s().forceItem, v -> s().forceItem = v);
+		toggle(37, "ladder", "Force Höhe",
+				List.of("Jeder muss rechtzeitig einmal", "auf einer bestimmten Höhe stehen."),
+				() -> s().forceHeight, v -> s().forceHeight = v);
+		toggle(38, "water_bucket", "Force Wasser-MLG",
+				List.of("Ab und zu geht's hoch hinaus –", "mit Wassereimer (Nether: Zwirbelranken)."),
+				() -> s().forceWaterMlg, v -> s().forceWaterMlg = v);
+		toggle(39, "slime_block", "Force Random-MLG",
+				List.of("Wie Wasser-MLG, aber mit zufälliger", "MLG-Art (Netz, Slime, Heu, Boot …)."),
+				() -> s().forceRandomMlg, v -> s().forceRandomMlg = v);
+		boolean battleOn = ForceBattle.get().enabled();
+		gui.setSlot(47, new GuiElementBuilder(item("golden_sword"))
+				.setName(Component.literal("Force Battle").withStyle(ChatFormatting.LIGHT_PURPLE))
+				.setLore(List.of(status(battleOn), Component.empty(),
+						gray("Jeder bekommt eigene Aufgaben (Item, Mob,"), gray("Block, Biom, Fortschritt). Wer nach Ablauf"),
+						gray("der Zeit mehr geschafft hat, gewinnt."), Component.empty(),
+						Component.literal("Klick: Einstellungen").withStyle(ChatFormatting.YELLOW)))
+				.glow(battleOn)
+				.hideDefaultTooltip()
+				.setCallback((index, type, action, g) -> ForceBattleMenu.open(player))
+				.build());
 		value(41, "clock", "Force-Zeitlimit",
 				List.of("So viel Zeit habt ihr", "für jede Force-Aufgabe."),
 				() -> s().forceMinutes, v -> s().forceMinutes = v, 1, " Minute(n)");
@@ -138,6 +149,14 @@ public final class SettingsGui {
 				});
 		renderSplitWindow(44);
 
+		gui.setSlot(22, new GuiElementBuilder(item("nether_star"))
+				.setName(Component.literal("Weitere Challenges").withStyle(ChatFormatting.GOLD))
+				.setLore(List.of(gray("Block verlassen, Laufspur, Chunk-Mob, Craft-Mob,"), gray("Snake, Kill-Effekt, Hit-Tausch, Zeit-Uhr,"),
+						gray("Force Höhe, Wasser-MLG, Random-MLG"), Component.empty(),
+						Component.literal("Klick: öffnen").withStyle(ChatFormatting.YELLOW)))
+				.hideDefaultTooltip()
+				.setCallback((index, type, action, g) -> de.bob.challenges.extra.ExtraMenu.open(player))
+				.build());
 		boolean armyOn = de.bob.challenges.army.ArmyBattle.get().active();
 		gui.setSlot(40, new GuiElementBuilder(item("diamond_sword"))
 				.setName(Component.literal("Mob Army Battle").withStyle(ChatFormatting.GOLD))

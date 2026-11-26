@@ -44,6 +44,38 @@ public final class ChallengeSettings {
 	public boolean forceMob = false;
 	public boolean forceItem = false;
 	public int forceMinutes = 5;
+	public boolean forceHeight = false;
+	// Force Battle (jeder Spieler eigene Aufgaben, Punkte)
+	public boolean forceBattle = false;
+	public boolean battleItem = true;
+	public boolean battleMob = true;
+	public boolean battleBlock = false;
+	public boolean battleBiome = false;
+	public boolean battleAdvancement = false;
+	public int battleMinutes = 60;
+	public int battleJokers = 2;
+	public boolean forceWaterMlg = false;
+	public boolean forceRandomMlg = false;
+
+	// Weitere Challenges
+	/** Block verlassen = dieser Blocktyp verschwindet überall */
+	public boolean extraBlockVanish = false;
+	public List<String> vanishedBlocks = new ArrayList<>();
+	/** Gelaufene Blöcke samt Säule darunter verschwinden */
+	public boolean extraWalkDecay = false;
+	/** Neuer Chunk = Zufalls-Mob, eingesperrt bis es weg ist */
+	public boolean extraChunkMob = false;
+	/** Craften = Zufalls-Mob bei jedem Spieler */
+	public boolean extraCraftMob = false;
+	/** Snake-Spuren */
+	public boolean extraSnake = false;
+	public int snakeSeconds = 60;
+	/** Mob töten = zufälliger permanenter Effekt */
+	public boolean extraKillEffect = false;
+	/** Mob schlagen = Platz mit zufälligem Mob tauschen */
+	public boolean extraHitSwap = false;
+	/** Tick-Uhr */
+	public boolean extraTickClock = false;
 
 	// Split-Challenge
 	public boolean splitMode = false;
@@ -150,6 +182,10 @@ public final class ChallengeSettings {
 		if (armyReady == null) armyReady = new ArrayList<>();
 		if (armyPhase == null) armyPhase = "FARM";
 		if (armyArena == null) armyArena = "";
+		if (vanishedBlocks == null) vanishedBlocks = new ArrayList<>();
+		snakeSeconds = Math.max(5, Math.min(600, snakeSeconds));
+		battleMinutes = Math.max(5, Math.min(600, battleMinutes));
+		battleJokers = Math.max(0, Math.min(10, battleJokers));
 		if (armyBackpacks == null) armyBackpacks = new HashMap<>();
 		armyFarmMinutes = Math.max(1, Math.min(600, armyFarmMinutes));
 		armyConfigMinutes = Math.max(1, Math.min(60, armyConfigMinutes));

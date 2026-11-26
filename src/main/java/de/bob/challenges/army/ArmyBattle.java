@@ -398,6 +398,15 @@ public final class ArmyBattle {
 	private void end(MinecraftServer server) {
 		s().armyPhase = END;
 		hideBars(server);
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (player.isSpectator() && teamOf(player) != null) {
+				toSpawn(server, player);
+			}
+		}
+		// Arenen wieder abbauen – sie entstehen erst beim nächsten Kampf neu
+		for (Fight fight : fights.values()) {
+			ArenaBuilder.remove(fight.level, fight.arena);
+		}
 		stopFights(server);
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			if (player.isSpectator() && teamOf(player) != null) {
@@ -856,9 +865,14 @@ public final class ArmyBattle {
 						arena.max().getX() + 1, arena.max().getY() + 1, arena.max().getZ() + 1);
 				for (Mob mob : level.getEntitiesOfClass(Mob.class, box, m -> m.isAlive() && !armyMobs.contains(m.getUUID())
 						&& !MobChallenge.get().disguises().isDisguise(m))) {
-					armyMobs.add(mob.getUUID());
-					alive.add(mob.getUUID());
-					mob.setPersistenceRequired();
+					if (isOffspring(mob)) {
+						armyMobs.add(mob.getUUID());
+						alive.add(mob.getUUID());
+						mob.setPersistenceRequired();
+					} else {
+						// Fremde Mobs (z. B. nachts vor dem Kampf gespawnt) haben in der Arena nichts verloren
+						mob.discard();
+					}
 				}
 			}
 			alive.removeIf(id -> {
@@ -880,6 +894,28 @@ public final class ArmyBattle {
 				}
 				return false;
 			});
+		}
+
+		/** Gehört der Mob zu einem Wellen-Mob? (geteilter Schleim/Magmawürfel, Plagegeist eines Magiers) */
+		boolean isOffspring(Mob mob) {
+			String type = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath();
+			String parent = switch (type) {
+				case "slime" -> "slime";
+				case "magma_cube" -> "magma_cube";
+				case "vex" -> "evoker";
+				default -> null;
+			};
+			if (parent == null) {
+				return false;
+			}
+			for (UUID id : alive) {
+				Entity entity = level.getEntity(id);
+				if (entity != null && BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath().equals(parent)
+						&& entity.distanceToSqr(mob) < 24 * 24) {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		ServerPlayer nearestPlayer(Entity entity) {

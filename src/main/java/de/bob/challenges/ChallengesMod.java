@@ -61,6 +61,19 @@ public final class ChallengesMod implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(manager::tick);
 		ServerTickEvents.END_SERVER_TICK.register(server -> de.bob.challenges.army.ArmyBattle.get().tick(server));
 
+		// Weitere Challenges
+		var extra = de.bob.challenges.extra.ExtraChallenges.get();
+		ServerTickEvents.END_SERVER_TICK.register(extra::tick);
+		ServerTickEvents.END_SERVER_TICK.register(server -> ForceBattle.get().tick(server));
+		UseItemCallback.EVENT.register((player, level, hand) -> ForceBattle.get().onUseItem(player, hand));
+		ServerTickEvents.END_SERVER_TICK.register(server -> de.bob.challenges.extra.Mlg.get().tick(server));
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((level, chunk, generated) -> extra.onChunkLoad(level, chunk));
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_UNLOAD.register(extra::onChunkUnload);
+		ServerLivingEntityEvents.AFTER_DEATH.register(extra::onEntityDeath);
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) -> extra.onDamage(entity, source));
+		UseItemCallback.EVENT.register((player, level, hand) -> extra.onUseItem(player, hand));
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> extra.onRespawn(newPlayer));
+
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> manager.allowPlayerDamage(entity));
 		ServerLivingEntityEvents.AFTER_DEATH.register(manager::onEntityDeath);
 		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> de.bob.challenges.army.ArmyBattle.get().onEntityDeath(entity, source));

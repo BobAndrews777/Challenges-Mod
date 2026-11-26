@@ -17,5 +17,6 @@ public class ResultSlotMixin {
 	@Inject(method = "onTake", at = @At("HEAD"))
 	private void challenges$onCraft(Player player, ItemStack stack, CallbackInfo ci) {
 		SplitManager.get().crafting().onCraft(player);
+		de.bob.challenges.extra.ExtraChallenges.get().onCraft(player);
 	}
 }
