@@ -196,7 +196,7 @@ public final class ForceBattle {
 					if (!holder.id().getNamespace().equals("minecraft") || path.startsWith("recipes/") || path.endsWith("/root")) {
 						continue;
 					}
-					if (holder.value().display().isEmpty() || holder.value().display().get().isHidden()) {
+					if (holder.value().display().isEmpty() || holder.value().display().get().hidden()) {
 						continue;
 					}
 					if (player.getAdvancements().getOrStartProgress(holder).isDone()) {
@@ -206,7 +206,7 @@ public final class ForceBattle {
 				}
 				if (list.isEmpty()) return null;
 				AdvancementHolder holder = list.get(random.nextInt(list.size()));
-				return new Task(kind, holder, holder.value().display().get().getTitle());
+				return new Task(kind, holder, holder.value().display().get().title());
 			}
 		}
 		return null;

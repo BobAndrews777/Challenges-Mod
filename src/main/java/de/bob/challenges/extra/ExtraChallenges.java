@@ -209,21 +209,33 @@ public final class ExtraChallenges {
 		}
 	}
 
+	private static long pack(int x, int z) {
+		return ((long) x << 32) | (z & 0xFFFFFFFFL);
+	}
+
+	private static int unpackX(long packed) {
+		return (int) (packed >> 32);
+	}
+
+	private static int unpackZ(long packed) {
+		return (int) packed;
+	}
+
 	private static Block ignored(String id) {
 		return BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(id));
 	}
 
 	public void onChunkLoad(ServerLevel level, LevelChunk chunk) {
-		loadedChunks.computeIfAbsent(level.dimension(), k -> new HashSet<>()).add(chunk.getPos().toLong());
+		loadedChunks.computeIfAbsent(level.dimension(), k -> new HashSet<>()).add(pack(chunk.getPos().x(), chunk.getPos().z()));
 		if (!vanished.isEmpty() && s().extraBlockVanish) {
-			chunkQueue.add(new Object[] {level.dimension(), chunk.getPos().toLong()});
+			chunkQueue.add(new Object[] {level.dimension(), pack(chunk.getPos().x(), chunk.getPos().z())});
 		}
 	}
 
 	public void onChunkUnload(ServerLevel level, LevelChunk chunk) {
 		Set<Long> set = loadedChunks.get(level.dimension());
 		if (set != null) {
-			set.remove(chunk.getPos().toLong());
+			set.remove(pack(chunk.getPos().x(), chunk.getPos().z()));
 		}
 	}
 
@@ -244,8 +256,8 @@ public final class ExtraChallenges {
 				continue;
 			}
 			long packed = (Long) entry[1];
-			int cx = ChunkPos.getX(packed);
-			int cz = ChunkPos.getZ(packed);
+			int cx = unpackX(packed);
+			int cz = unpackZ(packed);
 			LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
 			if (chunk == null) {
 				continue;
@@ -330,7 +342,7 @@ public final class ExtraChallenges {
 			Entity mob = level.getEntity(lock.mob());
 			if (!lock.level().equals(level.dimension()) || mob == null || !mob.isAlive() || mob.isRemoved()) {
 				locks.remove(player.getUUID());
-				lastChunk.put(player.getUUID(), ChunkPos.asLong(player.blockPosition()));
+				lastChunk.put(player.getUUID(), pack(player.getBlockX() >> 4, player.getBlockZ() >> 4));
 				player.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Frei! Du kannst den Chunk verlassen.").withStyle(ChatFormatting.GREEN)));
 				return;
 			}
@@ -344,14 +356,14 @@ public final class ExtraChallenges {
 			}
 			return;
 		}
-		long chunk = ChunkPos.asLong(player.blockPosition());
+		long chunk = pack(player.getBlockX() >> 4, player.getBlockZ() >> 4);
 		Long previous = lastChunk.put(player.getUUID(), chunk);
 		if (previous == null || previous == chunk) {
 			return;
 		}
 		Mob mob = spawnRandomMob(level, player, nearby(player));
 		if (mob != null) {
-			locks.put(player.getUUID(), new ChunkLock(level.dimension(), ChunkPos.getX(chunk), ChunkPos.getZ(chunk), mob.getUUID()));
+			locks.put(player.getUUID(), new ChunkLock(level.dimension(), unpackX(chunk), unpackZ(chunk), mob.getUUID()));
 			player.connection.send(new ClientboundSetActionBarTextPacket(Component.literal("Neuer Chunk: ").withStyle(ChatFormatting.GOLD)
 					.append(mob.getType().getDescription().copy().withStyle(ChatFormatting.RED))
 					.append(Component.literal(" – du bist eingesperrt!").withStyle(ChatFormatting.GOLD))));
@@ -585,7 +597,8 @@ public final class ExtraChallenges {
 		if (effects == null) {
 			effects = new ArrayList<>();
 			for (MobEffect effect : BuiltInRegistries.MOB_EFFECT) {
-				if (!effect.isInstantenous()) {
+				String id = BuiltInRegistries.MOB_EFFECT.getKey(effect).getPath();
+				if (!id.equals("instant_health") && !id.equals("instant_damage") && !id.equals("saturation")) {
 					effects.add(BuiltInRegistries.MOB_EFFECT.wrapAsHolder(effect));
 				}
 			}
